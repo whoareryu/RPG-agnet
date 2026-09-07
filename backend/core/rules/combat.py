@@ -50,8 +50,13 @@ def speed(u: UnitState, env: Environment) -> tuple[int, Breakdown]:
 
 
 def hit_chance(
-    attacker: UnitState, defender: UnitState, env: Environment, skill: SkillDef | None = None
+    attacker: UnitState,
+    defender: UnitState,
+    env: Environment,
+    skill: SkillDef | None = None,
+    include_luck: bool = True,
 ) -> tuple[int, Breakdown]:
+    """include_luck=False 는 판단 층(승산 휴리스틱)용이다 — 행운은 판단에 개입하지 않는다."""
     bd: Breakdown = [("기본", HIT_BASE)]
     v = HIT_BASE
     diff = (attacker.stats.agi - defender.stats.agi) * HIT_PER_AGI_DIFF
@@ -76,7 +81,7 @@ def hit_chance(
     if bless:
         bd.append(("축복", bless.value))
         v += int(bless.value)
-    luck = _luck_bonus(attacker)
+    luck = _luck_bonus(attacker) if include_luck else 0
     if luck:
         bd.append(("행운", luck))
         v += luck

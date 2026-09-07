@@ -1,0 +1,77 @@
+"""재계획 트리거 (기획서 §8.3, 설계 §6.3).
+
+캐릭터 이탈 · 승산 붕괴 · 적응 감지 · 환경 변화. 한 턴에 재계획은 최대 1회이고,
+연속 3회를 넘으면 감독에게 포기 여부를 강제로 묻는다(forced).
+"""
+
+from dataclasses import dataclass, field
+
+from core.rules.constants import ODDS_COLLAPSE_STEP, REPLAN_MAX_CONSECUTIVE
+from core.types import Plan
+
+
+@dataclass(frozen=True)
+class Trigger:
+    kind: str  # deviation | odds_collapse | adaptation | environment
+    detail: str
+
+
+@dataclass
+class ReplanState:
+    """러너가 판 하나 동안 들고 다니는 상태. 순수 함수가 읽고 갱신한다."""
+
+    collapse_level: float | None = None  # 마지막으로 트리거를 낸 승산 계단
+    consecutive: int = 0
+    total: int = 0
+    triggered_this_turn: bool = False
+    deviations: list[str] = field(default_factory=list)
+    adaptations: list[str] = field(default_factory=list)
+    environment_changes: list[str] = field(default_factory=list)
+
+    def new_turn(self) -> None:
+        self.triggered_this_turn = False
+        self.deviations.clear()
+        self.adaptations.clear()
+        self.environment_changes.clear()
+
+
+def replan_triggers(state: ReplanState, odds_value: float, plan: Plan | None) -> list[Trigger]:
+    """이번 턴에 재계획을 부를 이유들. 비어 있으면 그대로 간다."""
+    if plan is None or state.triggered_this_turn:
+        return []
+    out: list[Trigger] = []
+    for who in state.deviations:
+        out.append(Trigger("deviation", f"{who} 가 방침을 이탈했다"))
+    if odds_value <= plan.retreat_threshold:
+        # 첫 진입은 1회, 이후 0.1 씩 더 내려갈 때마다.
+        level = _floor_step(odds_value)
+        if state.collapse_level is None or level < state.collapse_level:
+            out.append(
+                Trigger(
+                    "odds_collapse", f"승산 {odds_value:.2f} ≤ 임계 {plan.retreat_threshold:.2f}"
+                )
+            )
+    for what in state.adaptations:
+        out.append(Trigger("adaptation", f"보스 적응 감지: {what}"))
+    for what in state.environment_changes:
+        out.append(Trigger("environment", what))
+    return out
+
+
+def _floor_step(v: float) -> float:
+    return round((v // ODDS_COLLAPSE_STEP) * ODDS_COLLAPSE_STEP, 2)
+
+
+def mark_replanned(state: ReplanState, odds_value: float, plan: Plan | None) -> bool:
+    """재계획을 실행했다고 기록한다. 강제 결정(연속 상한 초과)이면 True."""
+    state.triggered_this_turn = True
+    state.total += 1
+    state.consecutive += 1
+    if plan is not None and odds_value <= plan.retreat_threshold:
+        state.collapse_level = _floor_step(odds_value)
+    return state.consecutive > REPLAN_MAX_CONSECUTIVE
+
+
+def mark_quiet_turn(state: ReplanState) -> None:
+    """재계획 없이 지나간 턴은 연속 카운트를 끊는다."""
+    state.consecutive = 0

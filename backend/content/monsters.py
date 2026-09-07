@@ -5,7 +5,7 @@ from core.types import Body, EnemyDef, EnemyUnitDef, Equipment, SkillDef, Stats
 
 발톱 = Equipment("썩은 발톱", 1, 0, 1, 8, "physical")
 주먹 = Equipment("강철 주먹", 3, 0, 1, 18, "physical")
-잔해 = Equipment("잔해 덩어리", 2, 0, 1, 9, "physical")
+잔해 = Equipment("잔해 덩어리", 2, 0, 1, 9, "physical", ranged=True)
 부패의_손길 = SkillDef("부패의 손길", 8, "magic", 9, "enemy", "damage")
 분쇄 = SkillDef("분쇄", 12, "physical", 22, "enemy", "damage")
 진동 = SkillDef("갱도 진동", 14, "physical", 8, "all_enemies", "damage")

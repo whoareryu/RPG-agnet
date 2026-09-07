@@ -160,6 +160,7 @@ class Equipment:
     kind: DamageKind
     armor: int = 0
     is_long: bool = False  # 키 미달 페널티 대상
+    ranged: bool = False  # 후열에서도 아무나 노린다. 근접은 전열이 살아 있으면 전열만
 
 
 @dataclass(frozen=True)
@@ -168,8 +169,8 @@ class SkillDef:
     cost: int
     kind: DamageKind
     base: int
-    target: Literal["enemy", "ally", "self", "all_enemies"]
-    # heal | damage | guard(전열 보호) | slow | blind | bless
+    target: Literal["enemy", "ally", "self", "all_enemies", "all_allies"]
+    # heal | damage | guard(전열 보호) | slow | blind | bless | snipe | double | crit
     effect: str
     magnitude: int = 0
 

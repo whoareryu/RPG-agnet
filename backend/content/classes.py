@@ -16,15 +16,15 @@ WEAPONS: dict[str, Equipment] = {
     "방패와 검": Equipment("방패와 검", 3, 0, 10, 10, "physical", armor=10),
     "워해머": Equipment("워해머", 2, 0, 14, 16, "physical"),
     "쌍검": Equipment("쌍검", 1, 0, 8, 9, "physical"),
-    "지팡이": Equipment("지팡이", 1, 0, 4, 6, "magic"),
-    "마도서": Equipment("마도서", 1, 0, 4, 8, "magic"),
-    "장궁": Equipment("장궁", 2, 170, 9, 11, "physical", is_long=True),
-    "단궁": Equipment("단궁", 1, 0, 6, 8, "physical"),
-    "석궁": Equipment("석궁", 2, 0, 12, 13, "physical"),
+    "지팡이": Equipment("지팡이", 1, 0, 4, 6, "magic", ranged=True),
+    "마도서": Equipment("마도서", 1, 0, 4, 8, "magic", ranged=True),
+    "장궁": Equipment("장궁", 2, 170, 9, 11, "physical", is_long=True, ranged=True),
+    "단궁": Equipment("단궁", 1, 0, 6, 8, "physical", ranged=True),
+    "석궁": Equipment("석궁", 2, 0, 12, 13, "physical", ranged=True),
     "단검": Equipment("단검", 1, 0, 4, 7, "physical"),
-    "투척 나이프": Equipment("투척 나이프", 1, 0, 5, 6, "physical"),
+    "투척 나이프": Equipment("투척 나이프", 1, 0, 5, 6, "physical", ranged=True),
     "철퇴": Equipment("철퇴", 2, 0, 10, 11, "physical"),
-    "성표": Equipment("성표", 1, 0, 3, 5, "magic"),
+    "성표": Equipment("성표", 1, 0, 3, 5, "magic", ranged=True),
 }
 
 ARMORS: dict[str, Equipment] = {

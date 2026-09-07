@@ -62,6 +62,8 @@ class UnitState:
     disposition: Disposition | None = None
     dependents: int = 0
     life_note: str = ""
+    # 말투 지시 한 줄. narration.voice() 가 만든다. 엔진은 읽지 않는다.
+    voice: str = ""
     is_boss: bool = False
     alive: bool = True
     fled: bool = False
@@ -126,7 +128,7 @@ class Battle:
 
 
 def unit_from_character(
-    c: Character, build: BuildChoice, faction: str, position: Position
+    c: Character, build: BuildChoice, faction: str, position: Position, voice: str = ""
 ) -> UnitState:
     return UnitState(
         id=c.id,
@@ -148,6 +150,7 @@ def unit_from_character(
         disposition=c.disposition,
         dependents=c.life.dependents,
         life_note=c.life.note,
+        voice=voice,
     )
 
 

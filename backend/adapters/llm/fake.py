@@ -13,7 +13,6 @@ from typing import Any
 
 from core.agents.prompts import CTX_CLOSE, CTX_OPEN
 from core.ports import JsonSchema, Role
-from core.rules.constants import RETREAT_THRESHOLD_DEFAULT
 
 RANGED_CLASSES = {"archer", "mage", "cleric"}
 

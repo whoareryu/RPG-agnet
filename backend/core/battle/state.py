@@ -111,7 +111,8 @@ class Battle:
     plans: dict[str, Plan | None] = field(default_factory=dict)
     history: list[ActionRecord] = field(default_factory=list)
     adaptation_on: bool = False
-    boss_adaptations: list[str] = field(default_factory=list)
+    boss_adaptations: list[tuple[int, str]] = field(default_factory=list)  # (턴, 패턴)
+    boss_focus: str | None = None  # 적응 "focus"·"target_healer" 의 우선 타격 대상
     enemy_def: EnemyDef | None = None
     summoned: int = 0
     summon_every: int = 0

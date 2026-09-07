@@ -46,7 +46,16 @@ class FakeModel:
         odds = float(ctx.get("odds", 0.5))
         forced = bool(ctx.get("forced"))
         has_healer = any(u["can_heal"] for u in units)
-        threshold = RETREAT_THRESHOLD_DEFAULT + (0.05 if not has_healer else 0.0)
+        if not has_healer:
+            strategy = "rush"
+        elif odds >= 0.5:
+            strategy = "attrition"
+        else:
+            strategy = "defensive"
+        # 임계는 전략이 정한다. 속공은 "짧게 끝내자"는 약속이라 낮은 승산을 견디고,
+        # 방어전은 오래 끄는 만큼 일찍 접는다. 힐러 없음에 +0.05 를 얹는 안은 실측
+        # (30시드)에서 이길 판의 절반을 포기하게 만들어 버렸다.
+        threshold = {"rush": 0.20, "attrition": 0.30, "defensive": 0.35}[strategy]
 
         give_up = odds < threshold or (forced and odds < threshold + 0.1)
         if give_up:
@@ -63,13 +72,6 @@ class FakeModel:
                 "retreat_threshold": round(threshold, 2),
                 "rationale": "싸울 가치가 없다. 포기, 생존 우선 철수.",
             }
-
-        if not has_healer:
-            strategy = "rush"
-        elif odds >= 0.5:
-            strategy = "attrition"
-        else:
-            strategy = "defensive"
 
         formation = {}
         for u in units:
@@ -147,6 +149,9 @@ class FakeModel:
                 "follows_plan": follows,
                 "reason": reason,
             }
+
+        if ctx.get("strategy") == "retreat" and find("FLEE"):
+            return answer(find("FLEE"), True, "단장의 후퇴 명령. 빠진다.")
 
         if verdict == "deviate":
             if hp < 40 and find("FLEE"):

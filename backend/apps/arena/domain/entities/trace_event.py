@@ -29,6 +29,7 @@ KINDS: frozenset[str] = frozenset(
         "abandon",
         "flee",
         "summon",
+        "casualty",
         "mission_end",
         "intermission_start",
         "directive",

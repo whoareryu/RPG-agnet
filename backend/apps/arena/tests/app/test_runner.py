@@ -176,23 +176,43 @@ def test_전사는_실제로_적을_친다():
     assert total > 0, "전사가 다섯 판 동안 아무에게도 피해를 주지 못했다"
 
 
-def test_죽은_단원은_다음_판에_나오지_않는다():
-    """기획서 §6.6 — 사망은 소멸이다(QA 라운드 1 P0-5)."""
+def test_봄에는_아무도_죽지_않는다():
+    """기획서 v3 §6.0 — 1~4 출동 사망 0%. 고블린은 죽이기보다 끌고 간다.
+
+    튜토리얼 구간에서 유저는 아무도 잃지 않고 부상과 피로 관리만 배운다.
+    """
+    from content.missions import MISSIONS_A
+
+    assert all(m.casualty_tier == "spring" for m in MISSIONS_A)
+    쓰러진_적_있다 = False
+    for seed in range(1, 30):
+        rec = _run(_config(seed=seed, lineup=("kyle", "elaine")))
+        for res in rec.results:
+            assert not res.dead, f"seed {seed}: 봄인데 {res.dead} 가 죽었다"
+            쓰러진_적_있다 = 쓰러진_적_있다 or bool(res.injured or res.taken)
+    assert 쓰러진_적_있다, "아무도 쓰러지지 않아 이 테스트가 아무것도 재지 않는다"
+
+
+def test_사망하거나_끌려간_단원은_다음_판에_나오지_않는다():
+    """사망은 소멸이고(기획서 §6.6), 끌려간 사람은 굴에 있다(v3 §6.8)."""
     from dataclasses import replace as _replace
 
     from content.missions import MISSIONS_B
 
-    # 혼자 둘을 상대하면 1판에서 죽는 시드가 나온다(출전 1~3, 기획서 §7.2).
+    # 가을 구간(사망 20%)으로 바꿔 실제로 잃는 판을 만든다.
+    가을 = tuple(_replace(m, casualty_tier="autumn") for m in MISSIONS_B)
     for seed in range(1, 60):
-        cfg = _replace(_config(seed=seed, lineup=("kyle", "elaine")), missions=MISSIONS_B)
+        cfg = _replace(_config(seed=seed, lineup=("kyle", "elaine")), missions=가을)
         rec = _run(cfg)
-        if len(rec.results) < 2 or not rec.results[0].dead:
+        빠진_사람 = set(rec.results[0].dead) | set(rec.results[0].taken)
+        if len(rec.results) < 2 or not 빠진_사람:
             continue
-        dead = set(rec.results[0].dead)
         second = [e for e in rec.events if e.kind == "mission_start" and e.mission == 2][0]
         나온_사람 = {p["id"] for p in second.payload["party"]}
-        assert not (dead & 나온_사람), f"seed {seed}: 죽은 {dead & 나온_사람} 이(가) 2판에 섰다"
+        assert not (빠진_사람 & 나온_사람), (
+            f"seed {seed}: {빠진_사람 & 나온_사람} 이(가) 2판에 섰다"
+        )
         return
     raise AssertionError(
-        "1판에 사망자가 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다"
+        "1판에 사망·끌려감이 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다"
     )

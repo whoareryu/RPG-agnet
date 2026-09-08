@@ -227,6 +227,8 @@ class MissionSpec:
     lineup_min: int
     lineup_max: int
     adaptation_on: bool
+    # 쓰러짐 3분기 확률표의 행(기획서 v3 §6.0). CASUALTY_TABLE 의 키다.
+    casualty_tier: str = "spring"
 
 
 Strategy = Literal["rush", "attrition", "defensive", "retreat"]

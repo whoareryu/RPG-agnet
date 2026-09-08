@@ -41,6 +41,7 @@ from apps.arena.domain.services.judgment.replan import (
     mark_replanned,
     replan_triggers,
 )
+from apps.arena.domain.services.rules.casualty import resolve_casualty
 
 PartyMember = tuple[Character, BuildChoice, str]  # (캐릭터, 빌드, 말투)
 
@@ -56,6 +57,9 @@ class MissionResult:
     calls_used: int
     plans: int
     abandoned: bool
+    # 쓰러짐 3분기(기획서 v3 §6.0). 기본값이 있는 이유는 옛 기록을 읽을 때다.
+    injured: tuple[str, ...] = ()
+    taken: tuple[str, ...] = ()
 
 
 @dataclass
@@ -277,13 +281,32 @@ def play_mission(
 
     units = battle.units.values()
     party_units = [u for u in units if u.faction == battle.party]
+
+    # 쓰러진 대원은 전투가 끝난 뒤에야 갈린다(기획서 v3 §6.0). HP 0 은 사망이 아니다.
+    # 도망친 사람은 쓰러진 게 아니라 제 발로 나간 것이라 판정 대상이 아니다.
+    injured: list[str] = []
+    taken: list[str] = []
+    dead: list[str] = []
+    for u in party_units:
+        if u.alive or u.fled:
+            continue
+        verdict = resolve_casualty(dice, mission.casualty_tier)
+        {"injured": injured, "taken": taken, "dead": dead}[verdict].append(u.id)
+        tracer.emit(
+            "casualty",
+            {"tier": mission.casualty_tier, "verdict": verdict, "name": u.name},
+            actor=u.id,
+        )
+
     res = MissionResult(
         no=mission.no,
         outcome=result,
         turns=battle.turn,
         survivors=tuple(u.id for u in party_units if u.alive),
         fled=tuple(u.id for u in party_units if u.fled),
-        dead=tuple(u.id for u in party_units if not u.alive),
+        dead=tuple(dead),
+        injured=tuple(injured),
+        taken=tuple(taken),
         calls_used=getattr(model, "calls_used", 0) - calls_before,
         plans=plans,
         abandoned=abandoned,
@@ -333,7 +356,9 @@ def run(
         # 죽은 사람은 다음 판에 나오지 않는다. 사망은 소멸이다(기획서 §6.6).
         # 인터미션이 없어도 러너가 책임진다 — 예전에는 1판에서 죽은 단원이
         # 2판에 만피로 서 있었다(QA 라운드 1 P0-5).
-        members = [m for m in members if m[0].id not in res.dead]
+        # 끌려간 사람은 굴에 있다. 회수하지 않는 한 다음 판에 못 나온다(§6.8).
+        빠진_사람 = set(res.dead) | set(res.taken)
+        members = [m for m in members if m[0].id not in 빠진_사람]
         if not members:
             break
         if i < len(config.missions) - 1 and config.intermission and intermission is not None:

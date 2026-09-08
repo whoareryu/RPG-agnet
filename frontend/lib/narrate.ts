@@ -147,6 +147,13 @@ export function narrate(e: TraceEvent, names: Names): string {
       const v = Math.round(Number(p.odds) * 100);
       return `단장이 결정한다: "${p.rationale}" (승산 ${v}%). 전원 철수.`;
     }
+    case "casualty": {
+      // 기획서 v3 §6.0 — HP 0 은 사망이 아니다. 전투가 끝난 뒤에 갈린다.
+      const verdict = String(p.verdict);
+      if (verdict === "injured") return `${withJosa(who, "가")} 실려 나왔다. 살아 있다.`;
+      if (verdict === "taken") return `${withJosa(who, "가")} 굴로 끌려갔다. 아직 살아 있다.`;
+      return `${withJosa(who, "가")} 돌아오지 못했다.`;
+    }
     case "flee":
       return p.success
         ? `${withJosa(who, "가")} 전장을 벗어났다.`

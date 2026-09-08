@@ -123,3 +123,17 @@ TIRED_FATIGUE = 60  # fatigue > 60 → disadvantage
 ADVICE_MIN_MISSION = 2
 ADVICE_ODDS_BELOW = 0.35
 ADVICE_PROBABILITY = 0.25
+
+# ─── 쓰러짐 3분기 (기획서 v3 §6.0) ────────────────────────────────────
+# HP 0 은 사망이 아니다. 전투 종료 시 (부상, 끌려감, 사망) 백분율로 갈린다.
+# 1~4 출동의 사망 0% 는 고정이다 — 튜토리얼 구간에서 아무도 잃지 않고
+# 부상과 피로 관리만 배운다. 첫 상실은 여름의 「끌려감」으로, 죽음이 아니라
+# 회수 여부라는 선택으로 온다.
+CASUALTY_TABLE: dict[str, tuple[int, int, int]] = {
+    "spring": (97, 3, 0),  # 1~4 · 고블린
+    "boss_juvenile": (85, 13, 2),  # 5 · 성장기 미노타우루스
+    "summer": (70, 22, 8),  # 6~9 · 놀 등장
+    "boss_adult": (60, 25, 15),  # 10 · 성체
+    "autumn": (55, 25, 20),  # 11~14 · 오크 등장
+    "boss_king": (50, 25, 25),  # 15 · 킹
+}

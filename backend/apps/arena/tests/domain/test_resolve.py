@@ -105,12 +105,12 @@ def test_도망_실패는_턴만_잃는다():
 
 
 def test_방패_밀치기는_방어_상태를_걸고_턴이_지나면_풀린다():
-    b = _battle()
-    resolve(b, "garret", Action("SKILL", skill="방패 밀치기"), FixedDice([1]))
-    assert b.units["garret"].status("guard") is not None
+    b = _battle(party=("bern", "elaine", "kyle"))
+    resolve(b, "bern", Action("SKILL", skill="방패 밀치기"), FixedDice([1]))
+    assert b.units["bern"].status("guard") is not None
     end_turn(b)
     end_turn(b)
-    assert b.units["garret"].status("guard") is None
+    assert b.units["bern"].status("guard") is None
 
 
 def test_턴_종료에_스태미나가_회복된다():
@@ -121,9 +121,9 @@ def test_턴_종료에_스태미나가_회복된다():
     assert k.stamina == round(3 + k.stats.con * 0.3)
 
 
-def test_화염구는_적_전원을_때린다():
-    b = _battle(enemy=GHOUL_PACK, party=("seraphine", "elaine", "kyle"))
-    rec = resolve(b, "seraphine", Action("SKILL", skill="화염구"), FixedDice([1, 100]))
+def test_휩쓸기는_적_전원을_때린다():
+    b = _battle(enemy=GHOUL_PACK, party=("garret", "elaine", "kyle"))
+    rec = resolve(b, "garret", Action("SKILL", skill="휩쓸기"), FixedDice([1, 100]))
     assert len(rec.strikes) == 3
 
 
@@ -135,14 +135,16 @@ def test_행동은_history_에_남는다():
 
 def test_효율_스펙트럼_페널티가_modifiers_에_이름으로_남는다():
     """마른 몸에 판금 — 트롤픽의 대가가 인스펙터에 보인다(기획서 §4.3)."""
-    c = replace(_char("seraphine"), char_class="warrior")
+    # 힘 8 인 사람에게 판금과 방패를 쥐여준다. 베른은 추천 배분으로 힘이 13 이라
+    # 미달이 나지 않는다 — 트롤픽의 대가를 보려면 실제로 모자란 몸이어야 한다.
+    c = replace(_char("elaine"), char_class="warrior")
     c = replace(c, body=replace(c.body, height_cm=180, build="slim"))
     b = _battle()
     from apps.arena.domain.entities.types import BuildChoice
     from content.classes import ARMORS, WEAPONS
 
     build = BuildChoice(WEAPONS["방패와 검"], ARMORS["판금 갑옷"], (), "테스트")
-    b.units["seraphine"] = unit_from_character(c, build, "party", "front")
-    rec = resolve(b, "seraphine", Action("ATTACK", "vargas"), FixedDice([100]))
+    b.units["elaine"] = unit_from_character(c, build, "party", "front")
+    rec = resolve(b, "elaine", Action("ATTACK", "vargas"), FixedDice([100]))
     names = [n for n, _ in rec.modifiers]
     assert "무게 미달" in names and "힘 미달" in names

@@ -64,8 +64,8 @@ def test_지혜가_낮으면_아군_상태가_가려진다():
 
 
 def test_지혜가_높으면_전부_보인다():
-    b = _battle(seraphine={"wis": 18}, party=("garret", "elaine", "seraphine"))
-    visible, masked, tier = visible_context(b, "seraphine", PLAN, 0.6)
+    b = _battle(bern={"wis": 18}, party=("garret", "elaine", "bern"))
+    visible, masked, tier = visible_context(b, "bern", PLAN, 0.6)
     assert tier == 3 and masked == []
     assert visible["plan_intent"]["strategy"] == "rush" and visible["odds"] == 0.6
     assert {a["id"] for a in visible["allies"]} == {"garret", "elaine"}
@@ -99,7 +99,7 @@ def test_전력이_없는_진영의_승산은_바닥이다():
 
 def test_힐러가_있으면_시너지가_붙는다():
     with_healer = _battle(party=("garret", "elaine", "kyle"))
-    without = _battle(party=("garret", "seraphine", "kyle"))
+    without = _battle(party=("garret", "bern", "kyle"))
     _, bd1 = odds(with_healer, "party")
     _, bd2 = odds(without, "party")
     assert bd1["mine"]["synergy"] == 1.15 and bd2["mine"]["synergy"] == 1.0

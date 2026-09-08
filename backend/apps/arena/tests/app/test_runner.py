@@ -76,7 +76,7 @@ def test_호출_수는_상한_안이고_mission_end_에_남는다():
 
 @pytest.mark.parametrize("seed", range(1, 41))
 def test_어느_시드든_예외_없이_끝난다(seed):
-    rec = _run(_config(seed=seed, lineup=("garret", "seraphine", "thomas")))
+    rec = _run(_config(seed=seed, lineup=("garret", "bern", "thomas")))
     assert rec.results[0].outcome in ("win", "lose", "retreat", "draw")
 
 
@@ -84,7 +84,7 @@ def test_후퇴가_실제로_발생하는_시드가_있다():
     """기획서 §5 — 무조건 싸우는 게임이 아니다. 포기 판단이 트레이스에 남아야 한다."""
     found = None
     for seed in range(1, 60):
-        rec = _run(_config(seed=seed, lineup=("thomas", "kyle", "seraphine")))
+        rec = _run(_config(seed=seed, lineup=("thomas", "kyle", "bern")))
         if rec.results[0].abandoned:
             found = rec
             break
@@ -109,8 +109,8 @@ def test_같은_캐릭터_중복_출전은_거부한다():
 
 def test_트롤픽_전사_셋도_돈다():
     cfg = _config(
-        lineup=("seraphine", "elaine", "thomas"),
-        classes={"seraphine": "warrior", "elaine": "warrior", "thomas": "warrior"},
+        lineup=("bern", "elaine", "thomas"),
+        classes={"bern": "warrior", "elaine": "warrior", "thomas": "warrior"},
     )
     rec = _run(cfg)
     assert rec.results[0].outcome in ("win", "lose", "retreat", "draw")

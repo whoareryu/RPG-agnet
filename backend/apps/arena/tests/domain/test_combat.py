@@ -19,7 +19,7 @@ def _char(cid: str, **stat_override):
     return c
 
 
-def _battle(env=MINE, party=("garret", "seraphine", "kyle"), **overrides):
+def _battle(env=MINE, party=("garret", "bern", "kyle"), **overrides):
     units = {}
     for cid in party:
         c = _char(cid, **overrides.get(cid, {}))
@@ -78,10 +78,10 @@ def test_방어_태세는_피해를_절반으로():
 
 
 def test_늪지는_마법_피해를_줄인다():
-    b = _battle(env=SWAMP)
-    스킬 = b.units["seraphine"].has_skill("화염구")
-    d_swamp, bd = damage(b.units["seraphine"], b.units["vargas"], SWAMP, 스킬, crit=False)
-    d_mine, _ = damage(b.units["seraphine"], b.units["vargas"], MINE, 스킬, crit=False)
+    """마법 피해원은 음유시인의 북·류트다 — 마법사가 사라진 뒤로(설계 2026-09-08)."""
+    b = _battle(env=SWAMP, party=("garret", "elaine", "kyle"))
+    d_swamp, bd = damage(b.units["elaine"], b.units["vargas"], SWAMP, None, crit=False)
+    d_mine, _ = damage(b.units["elaine"], b.units["vargas"], MINE, None, crit=False)
     assert d_swamp < d_mine
     assert ("환경 늪지 magic", 0.8) in bd
 

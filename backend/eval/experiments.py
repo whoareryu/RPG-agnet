@@ -31,14 +31,14 @@ class Composition:
     label: str
     lineup: tuple[str, ...]
     classes: dict[str, str]
-    # 클래스를 바꿨으면 배분도 바꿔야 한다. 프리셋 배분을 그대로 두면 "마법사
-    # 몰빵" 의 마법사 둘이 지능 8 인 채로 로브를 입은 궁수가 되고, 실험이 재는
+    # 클래스를 바꿨으면 배분도 바꿔야 한다. 프리셋 배분을 그대로 두면 "방패병
+    # 몰빵" 의 방패병 둘이 힘 8 인 채로 판금을 못 입는 궁수가 되고, 실험이 재는
     # 것이 조합인지 장비 페널티인지 갈라지지 않는다(QA 라운드 2).
     allocations: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 _WARRIOR = {"str_": 8, "con": 8, "wis": 2}
-_MAGE = {"int_": 10, "wis": 6, "con": 2}
+_DEFENDER = {"con": 8, "str_": 6, "wis": 4}
 
 # 기획서 §10.1 의 조합 4종.
 COMPOSITIONS: tuple[Composition, ...] = (
@@ -49,15 +49,17 @@ COMPOSITIONS: tuple[Composition, ...] = (
         {"kyle": "warrior", "thomas": "warrior"},
         {"kyle": _WARRIOR, "thomas": _WARRIOR},
     ),
-    Composition("balanced", "균등", ("garret", "elaine", "seraphine"), {}),
+    Composition("balanced", "균등", ("garret", "elaine", "bern"), {}),
     Composition(
-        "mages",
-        "마법사 몰빵",
-        ("seraphine", "kyle", "thomas"),
-        {"kyle": "mage", "thomas": "mage"},
-        {"kyle": _MAGE, "thomas": _MAGE},
+        # "마법사 몰빵" 을 대체한다(설계 2026-09-08). 전원이 방어형이라 적을
+        # 못 죽인다 — "이길 수 없는 조합에서 단장이 무엇을 하는가" 가 더 선명하다.
+        "defenders",
+        "방패병 몰빵",
+        ("bern", "kyle", "thomas"),
+        {"kyle": "defender", "thomas": "defender"},
+        {"kyle": _DEFENDER, "thomas": _DEFENDER},
     ),
-    Composition("no_healer", "힐러 없음", ("garret", "seraphine", "thomas"), {}),
+    Composition("no_healer", "힐러 없음", ("garret", "bern", "thomas"), {}),
 )
 
 

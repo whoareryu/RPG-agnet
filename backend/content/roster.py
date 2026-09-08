@@ -18,7 +18,7 @@ PRESET_ROSTER: tuple[Character, ...] = (
         disposition=Disposition(risk=20, cooperation=30, planning=40, sacrifice=30),
         char_class="warrior",
         life=LifeContext(0, "폐광 경비대 출신. 가족 없음."),
-        backstory="폐광 경비대 출신. 방패 뒤에서 세상을 본다.",
+        backstory="폐광 경비대 출신. 지키는 일에 질려 먼저 치고 들어가는 쪽을 택했다.",
     ),
     Character(
         id="elaine",
@@ -27,7 +27,7 @@ PRESET_ROSTER: tuple[Character, ...] = (
         body=Body(166, "normal", 58),
         stats=base_stats(),
         disposition=Disposition(risk=10, cooperation=70, planning=-10, sacrifice=80),
-        char_class="cleric",
+        char_class="bard",
         life=LifeContext(0, "무너진 수도원의 마지막 수련 수녀."),
         backstory="무너진 수도원의 마지막 수련 수녀. 남을 위해 서는 것이 습관이다.",
     ),
@@ -43,15 +43,16 @@ PRESET_ROSTER: tuple[Character, ...] = (
         backstory="두 살 딸이 있다. 위험이 오면 먼저 집을 생각한다.",
     ),
     Character(
-        id="seraphine",
-        name="세라핀 뒤부아",
-        gender="female",
-        body=Body(171, "slim", 54),
+        id="bern",
+        name="베른 하이트",
+        gender="male",
+        body=Body(183, "sturdy", 92),
         stats=base_stats(),
-        disposition=Disposition(risk=40, cooperation=-20, planning=80, sacrifice=0),
-        char_class="mage",
-        life=LifeContext(0, "왕립 학당에서 쫓겨난 학자."),
-        backstory="왕립 학당에서 쫓겨난 학자. 지혜가 높아 전장을 전부 본다.",
+        # 세라핀이 갖고 있던 수읽기형(계획 +80) 데모 슬롯을 승계한다(기획서 §7.4).
+        disposition=Disposition(risk=-20, cooperation=40, planning=80, sacrifice=20),
+        char_class="defender",
+        life=LifeContext(0, "성문 수비대에서 십 년."),
+        backstory="성문 수비대에서 십 년. 어디가 먼저 뚫릴지 보고 그 자리에 선다.",
     ),
     Character(
         id="thomas",
@@ -71,7 +72,7 @@ PRESET_ALLOCATIONS: dict[str, dict[str, int]] = {
     "garret": {"str_": 6, "con": 8, "wis": 4},
     "elaine": {"wis": 8, "int_": 6, "con": 4},
     "kyle": {"agi": 8, "wis": 4, "con": 4, "luck": 2},
-    "seraphine": {"int_": 6, "wis": 10, "agi": 2},
+    "bern": {"con": 8, "str_": 5, "wis": 5},
     "thomas": {"agi": 8, "luck": 5, "wis": 5},
 }
 

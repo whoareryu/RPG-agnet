@@ -1,6 +1,11 @@
 """클래스 5종 · 무기 · 갑옷 · 스킬 · AI 세부 층의 빌드 선택 (설계 §2.3).
 
-성직자를 더한 이유: E1 의 "힐러 없음" 조합이 성립하려면 힐러가 있어야 한다.
+역할을 막는 쪽(방패병) · 때리는 쪽(전사 · 궁수 · 도적) · 살리는 쪽(음유시인)으로
+가른다(설계 2026-09-08). 음유시인이 치유를 갖는 이유: E1 의 "힐러 없음" 조합이
+성립하려면 힐러가 있어야 한다.
+
+방어/공격은 행동 금지가 아니라 수치로 가른다 — 기획서 §4.3 "'장착 불가' 대신
+페널티" 와 같은 원칙이다. 방패병에게 도끼를 쥐여주는 트롤픽도 막지 않는다.
 
 choose_build 는 기획서 §5 "세부" 층이다 — 무기·스킬은 유저가 정하지 않고
 캐릭터의 신체·능력치·클래스를 보고 정해진다. A단계는 코드 휴리스틱이고
@@ -13,17 +18,23 @@ from apps.arena.domain.entities.types import BuildChoice, Character, Equipment, 
 
 # ─── 무기 ─────────────────────────────────────────────────────────────
 WEAPONS: dict[str, Equipment] = {
+    # 방패병 — 피해는 낮고 방어가 붙는다
+    "타워 실드": Equipment("타워 실드", 3, 0, 12, 4, "physical", armor=20),
     "방패와 검": Equipment("방패와 검", 3, 0, 10, 10, "physical", armor=10),
+    # 전사 — 피해가 높고 방어가 없다
+    "장창": Equipment("장창", 2, 175, 9, 13, "physical", is_long=True),
+    "대검": Equipment("대검", 3, 0, 14, 15, "physical"),
+    "전투 도끼": Equipment("전투 도끼", 3, 0, 13, 14, "physical"),
     "워해머": Equipment("워해머", 2, 0, 14, 16, "physical"),
+    # 음유시인 — 소리가 무기다. 피해는 곁다리고 역할은 지원이다
+    "북": Equipment("북", 1, 0, 3, 4, "magic", ranged=True),
+    "류트": Equipment("류트", 1, 0, 3, 5, "magic", ranged=True),
     "쌍검": Equipment("쌍검", 1, 0, 8, 9, "physical"),
-    "지팡이": Equipment("지팡이", 1, 0, 4, 6, "magic", ranged=True),
-    "마도서": Equipment("마도서", 1, 0, 4, 8, "magic", ranged=True),
     "장궁": Equipment("장궁", 2, 170, 9, 11, "physical", is_long=True, ranged=True),
     "단궁": Equipment("단궁", 1, 0, 6, 8, "physical", ranged=True),
     "석궁": Equipment("석궁", 2, 0, 12, 13, "physical", ranged=True),
     "단검": Equipment("단검", 1, 0, 4, 7, "physical"),
     "투척 나이프": Equipment("투척 나이프", 1, 0, 5, 6, "physical", ranged=True),
-    "철퇴": Equipment("철퇴", 2, 0, 10, 11, "physical"),
     "성표": Equipment("성표", 1, 0, 3, 5, "magic", ranged=True),
 }
 
@@ -36,10 +47,11 @@ ARMORS: dict[str, Equipment] = {
 
 # ─── 스킬 ─────────────────────────────────────────────────────────────
 SKILLS: dict[str, SkillDef] = {
-    "방패 밀치기": SkillDef("방패 밀치기", 8, "physical", 6, "self", "guard", 2),
+    # 피해가 0 이다 — 방패병은 막는 사람이다. guard 는 base 를 읽지 않는다.
+    "방패 밀치기": SkillDef("방패 밀치기", 8, "physical", 0, "self", "guard", 2),
+    "전열 압박": SkillDef("전열 압박", 10, "physical", 0, "all_enemies", "slow", 2),
     "강타": SkillDef("강타", 10, "physical", 14, "enemy", "damage"),
-    "화염구": SkillDef("화염구", 12, "magic", 10, "all_enemies", "damage"),
-    "서리 결계": SkillDef("서리 결계", 10, "magic", 0, "all_enemies", "slow", 2),
+    "휩쓸기": SkillDef("휩쓸기", 12, "physical", 10, "all_enemies", "damage"),
     "조준 사격": SkillDef("조준 사격", 9, "physical", 12, "enemy", "snipe"),
     "연사": SkillDef("연사", 10, "physical", 6, "enemy", "double"),
     "급소 찌르기": SkillDef("급소 찌르기", 9, "physical", 9, "enemy", "crit", 30),
@@ -62,23 +74,23 @@ class ClassDef:
 
 
 CLASSES: dict[str, ClassDef] = {
+    "defender": ClassDef(
+        "defender",
+        "방패병",
+        ("con", "str_"),
+        ("sturdy",),
+        175,
+        ("타워 실드", "방패와 검"),
+        ("방패 밀치기", "전열 압박"),
+    ),
     "warrior": ClassDef(
         "warrior",
         "전사",
-        ("str_", "con"),
-        ("sturdy",),
-        175,
-        ("방패와 검", "워해머", "쌍검"),
-        ("방패 밀치기", "강타"),
-    ),
-    "mage": ClassDef(
-        "mage",
-        "마법사",
-        ("int_",),
-        ("slim", "normal"),
+        ("str_", "agi"),
+        ("sturdy", "normal"),
         0,
-        ("지팡이", "마도서"),
-        ("화염구", "서리 결계"),
+        ("장창", "대검", "전투 도끼", "워해머"),
+        ("강타", "휩쓸기"),
     ),
     "archer": ClassDef(
         "archer",
@@ -98,13 +110,13 @@ CLASSES: dict[str, ClassDef] = {
         ("단검", "투척 나이프"),
         ("급소 찌르기", "연막"),
     ),
-    "cleric": ClassDef(
-        "cleric",
-        "성직자",
+    "bard": ClassDef(
+        "bard",
+        "음유시인",
         ("wis", "int_"),
         ("slim", "normal", "sturdy"),
         0,
-        ("철퇴", "성표"),
+        ("북", "류트"),
         ("치유", "축복"),
         can_heal=True,
     ),
@@ -117,42 +129,46 @@ def choose_build(c: Character) -> BuildChoice:
     b, s = c.body, c.stats
     skills = tuple(SKILLS[k] for k in cls.skills)
 
+    if cls.key == "defender":
+        # 방패병은 막는 사람이다. 힘이 받쳐 주면 더 두꺼운 방패를 든다.
+        if s.str_ >= 12:
+            w, why = WEAPONS["타워 실드"], "힘이 받친다. 타워 실드로 전열을 통째로 막는다."
+        else:
+            w, why = WEAPONS["방패와 검"], "타워 실드는 무겁다. 방패와 검으로 버틴다."
+        a = ARMORS["판금 갑옷"] if s.str_ >= 11 else ARMORS["사슬 갑옷"]
+        return BuildChoice(w, a, skills, why)
+
     if cls.key == "warrior":
-        if b.build == "sturdy" and b.height_cm >= 175:
+        # 전사는 때리는 사람이다. 방패를 들지 않는다.
+        if b.height_cm >= 175:
             return BuildChoice(
-                WEAPONS["방패와 검"],
-                ARMORS["판금 갑옷"],
+                WEAPONS["장창"],
+                ARMORS["판금 갑옷"] if s.str_ >= 11 else ARMORS["사슬 갑옷"],
                 skills,
-                "건장하고 키가 크다. 방패를 들고 전열을 막는다.",
+                "키가 커서 장창을 제대로 뻗는다.",
             )
-        if s.str_ >= 14 and b.height_cm < 175:
+        if s.str_ >= 14:
+            # 기획서 §5 "키 작고 힘 센 전사 → 긴 창 비효율, 워해머".
             return BuildChoice(
                 WEAPONS["워해머"],
                 ARMORS["사슬 갑옷"],
                 skills,
                 "키가 작고 힘이 세다. 긴 무기는 비효율 — 워해머로 짧게 세게 친다.",
             )
-        if b.build == "slim" and s.agi >= 12:
+        if b.build == "sturdy":
             return BuildChoice(
-                WEAPONS["쌍검"],
-                ARMORS["가죽 갑옷"],
+                WEAPONS["전투 도끼"],
+                ARMORS["사슬 갑옷"],
                 skills,
-                "마르고 빠르다. 무거운 갑옷 대신 쌍검으로 딜을 낸다.",
+                "몸이 두껍다. 도끼로 무겁게 내리친다.",
             )
         return BuildChoice(
-            WEAPONS["방패와 검"],
+            WEAPONS["대검"],
             ARMORS["사슬 갑옷"],
             skills,
-            "특별한 강점이 없다. 방패와 사슬로 무난하게 버틴다.",
+            "특별한 강점이 없다. 대검으로 무난하게 벤다.",
         )
-    if cls.key == "mage":
-        w = WEAPONS["마도서"] if s.int_ >= 12 else WEAPONS["지팡이"]
-        return BuildChoice(
-            w,
-            ARMORS["로브"],
-            skills,
-            "지능이 높으면 마도서, 아니면 지팡이. 갑옷은 마법을 방해한다.",
-        )
+
     if cls.key == "archer":
         if b.height_cm >= 170:
             return BuildChoice(
@@ -179,7 +195,9 @@ def choose_build(c: Character) -> BuildChoice:
         return BuildChoice(
             w, ARMORS["가죽 갑옷"], skills, "가볍게 움직여야 한다. 손이 빠르면 투척, 아니면 단검."
         )
-    # cleric
-    w = WEAPONS["철퇴"] if s.str_ >= 10 else WEAPONS["성표"]
-    a = ARMORS["사슬 갑옷"] if b.build == "sturdy" else ARMORS["가죽 갑옷"]
-    return BuildChoice(w, a, skills, "치유가 본분이다. 몸이 버티는 만큼만 갑옷을 입는다.")
+    # bard — 살리는 사람이다. 북으로 박자를 잡고, 지혜가 받치면 곡을 끌고 간다.
+    if s.wis >= 12:
+        w, why = WEAPONS["류트"], "지혜가 높다. 류트로 곡을 끌고 가며 아군의 손을 맞춘다."
+    else:
+        w, why = WEAPONS["북"], "먼저 박자를 잡아야 한다. 북으로 전투의 리듬을 세운다."
+    return BuildChoice(w, ARMORS["가죽 갑옷"], skills, why)

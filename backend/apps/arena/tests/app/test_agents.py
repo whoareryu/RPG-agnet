@@ -55,11 +55,14 @@ class 고정모델:
 
 
 def test_감독은_힐러가_없으면_속공을_고르고_편성을_반영한다():
-    b = _battle(party=("garret", "seraphine", "kyle"))
+    b = _battle(party=("garret", "bern", "kyle"))
     tracer, sink = _tracer()
     plan = make_plan(b, "party", FakeModel(), tracer, "initial")
     assert plan.strategy == "rush" and plan.worth_fighting
-    assert b.units["kyle"].position == "back" and b.units["garret"].position == "front"
+    # 방패병이 전열을 잡고 전사는 그 뒤에서 때린다 — 근접 적은 전열이 살아 있는
+    # 한 후열에 닿지 못한다(resolve.py 의 reachable). 클래스 개편 뒤의 편성이다.
+    assert b.units["bern"].position == "front"
+    assert b.units["garret"].position == "back" and b.units["kyle"].position == "back"
     assert sink.of_kind("plan")[0].payload["reason"] == "initial"
 
 
@@ -148,7 +151,7 @@ def test_같은_아군이_3턴_연속_공격하면_집중_타격_적응():
 def test_마법_위주면_결계_적응():
     b = _battle()
     b.turn = 4
-    _history(b, "seraphine", [1, 2], kind="magic", dmg=30, action="SKILL:화염구")
+    _history(b, "bern", [1, 2], kind="magic", dmg=30, action="SKILL:화염구")
     _history(b, "garret", [3], dmg=5)
     _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
     pattern, _ = detect_adaptation(b, "vargas")

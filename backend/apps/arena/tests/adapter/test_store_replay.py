@@ -19,7 +19,7 @@ SAMPLE = Path(__file__).resolve().parents[5] / "docs" / "trace-samples" / "one-r
 def _cfg(seed=3):
     return RunConfig(
         seed=seed,
-        lineup=("thomas", "kyle", "seraphine"),
+        lineup=("thomas", "kyle", "bern"),
         allocations={},
         classes={},
         genders={},
@@ -74,7 +74,7 @@ def test_최근_목록은_요약만_읽는다(tmp_path):
     store = JsonlRunStore(tmp_path)
     store.save(_run(_cfg(1)))
     rows = store.list_recent(5)
-    assert rows[0]["run_id"] == "r1" and rows[0]["lineup"] == ["thomas", "kyle", "seraphine"]
+    assert rows[0]["run_id"] == "r1" and rows[0]["lineup"] == ["thomas", "kyle", "bern"]
 
 
 def test_리플레이는_모델_호출_없이_같은_판을_재생한다():

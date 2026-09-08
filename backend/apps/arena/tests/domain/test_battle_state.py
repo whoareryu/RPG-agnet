@@ -21,7 +21,7 @@ def _char(cid: str):
     return replace(c, stats=allocate(c.stats, PRESET_ALLOCATIONS[cid]))
 
 
-def _battle(env=MINE, party=("garret", "seraphine", "kyle")):
+def _battle(env=MINE, party=("garret", "bern", "kyle")):
     units = {}
     for cid in party:
         c = _char(cid)
@@ -58,7 +58,7 @@ def test_적이_전멸하면_승리():
 
 def test_후퇴_명령_없이_전원이_사라지면_패배_명령이_있으면_후퇴():
     b = _battle()
-    for cid in ("garret", "seraphine", "kyle"):
+    for cid in ("garret", "bern", "kyle"):
         b.units[cid].fled = True
     assert outcome(b) == "lose"
     b.retreat_ordered = True
@@ -80,6 +80,6 @@ def test_치유_스킬은_자기와_아군을_대상으로_한다():
 
 
 def test_유닛은_효율_스펙트럼을_들고_있다():
-    b = _battle(party=("seraphine", "elaine", "kyle"))
-    s = b.units["seraphine"]
-    assert s.armor_mods.hit == 0  # 로브는 마른 몸에 맞는다
+    b = _battle(party=("bern", "elaine", "kyle"))
+    s = b.units["elaine"]
+    assert s.armor_mods.hit == 0  # 가죽 갑옷은 보통 몸에 맞는다

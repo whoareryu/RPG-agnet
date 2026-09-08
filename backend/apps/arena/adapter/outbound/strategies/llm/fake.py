@@ -15,7 +15,7 @@ from apps.arena.app.use_cases.agents.prompts import CTX_CLOSE, CTX_OPEN
 from apps.arena.domain.ports.ports import JsonSchema, Role
 from apps.arena.domain.services.josa import with_josa
 
-RANGED_CLASSES = {"archer", "mage", "cleric"}
+RANGED_CLASSES = {"archer", "bard"}
 
 
 def parse_context(prompt: str) -> dict[str, Any]:

@@ -10,6 +10,7 @@ import logging
 import queue
 import secrets
 import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import asdict
 from pathlib import Path
@@ -56,6 +57,7 @@ class RunSession:
         # 이어져야 하므로 대기에 상한을 둔다(설계 §11.1).
         self.directives: queue.Queue[DirectivesRequest] = queue.Queue()
         self.awaiting_input = threading.Event()
+        self.finished_at: float | None = None
 
     def emit(self, event: TraceEvent) -> None:
         self.events.append(event)
@@ -66,6 +68,14 @@ class RunSession:
 # 으로 간다 — 판이 멈춘 채로 남으면 스트림이 영원히 열려 있다.
 DIRECTIVE_TIMEOUT = 60.0
 
+# 동시에 도는 런의 상한. 배포하면 누구나 POST /runs 를 반복할 수 있고, 런마다
+# 스레드 하나와 이벤트 전량이 메모리에 남는다. MAX_CALLS 는 런 **하나 안의**
+# 호출만 막는다(QA 라운드 2).
+MAX_ACTIVE_RUNS = 8
+# 완료된 런을 세션에 남겨 두는 시간(초). 스트림이 끝을 읽고 화면이 결과로
+# 넘어갈 시간만 있으면 된다 — 기록은 저장소에 있다.
+SESSION_TTL = 120.0
+
 
 def build_app(
     store: RunStore,
@@ -73,6 +83,7 @@ def build_app(
     model_name: str = "fake",
     experiments_dir: Path | None = None,
     directive_timeout: float = DIRECTIVE_TIMEOUT,
+    max_active_runs: int = MAX_ACTIVE_RUNS,
 ) -> FastAPI:
     app = FastAPI(title="rpg-arena", docs_url=None, redoc_url=None, openapi_url=None)
     sessions: dict[str, RunSession] = {}
@@ -153,6 +164,13 @@ def build_app(
             members = build_party(cfg)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+        _reap_sessions()
+        active = sum(1 for s in sessions.values() if not s.done.is_set())
+        if active >= max_active_runs:
+            raise HTTPException(
+                status_code=429,
+                detail=f"지금 {active}판이 동시에 돌고 있다. 잠시 뒤 다시 시도한다",
+            )
         run_id = secrets.token_hex(6)
         session = RunSession(run_id, cfg)
         sessions[run_id] = session
@@ -241,6 +259,17 @@ def build_app(
 
     # ─── 내부 ──────────────────────────────────────────────────────────
 
+    def _reap_sessions() -> None:
+        """끝난 지 오래된 세션을 치운다.
+
+        예전에는 완료마다 threading.Timer 를 하나씩 띄웠다 — 런이 끝나지 않으면
+        영영 남았고, 타이머 스레드도 함께 늘었다. 새 런을 만들 때 훑는다.
+        """
+        now = time.monotonic()
+        for rid, s in list(sessions.items()):
+            if s.done.is_set() and s.finished_at and now - s.finished_at > SESSION_TTL:
+                sessions.pop(rid, None)
+
     def _load(run_id: str) -> RunRecord:
         try:
             record = store.load(run_id)
@@ -265,16 +294,18 @@ def build_app(
                 )
                 try:
                     store.save(record)
-                except Exception:  # noqa: BLE001 — 저장 실패가 화면을 끊으면 안 된다
+                except Exception as e:  # noqa: BLE001 — 저장 실패가 화면을 끊으면 안 된다
                     logger.exception("런 저장 실패 %s", session.run_id)
+                    # 스트림은 정상으로 끝나는데 세션이 지워지면 방금 본 판이
+                    # 사라진다. 그 사실을 화면에 알린다(QA 라운드 2).
+                    session.error = f"기록을 저장하지 못했다: {type(e).__name__}: {e}"
             except Exception as e:  # noqa: BLE001
                 logger.exception("런 실패 %s", session.run_id)
                 session.error = f"{type(e).__name__}: {e}"
             finally:
                 session.done.set()
+                session.finished_at = time.monotonic()
                 session.queue.put(_DONE)
-                # 완료 후 잠시 세션을 남겨 스트림이 끝을 읽게 한다. 저장됐으니 지워도 된다.
-                threading.Timer(60.0, lambda: sessions.pop(session.run_id, None)).start()
 
         threading.Thread(target=work, name=f"run-{session.run_id}", daemon=True).start()
 
@@ -334,6 +365,7 @@ def _sse(event: TraceEvent) -> str:
 def _sse_live(session: RunSession) -> Iterator[str]:
     # 이미 지나간 이벤트부터 — 중간에 접속해도 처음부터 본다.
     sent = 0
+    idle = 0
     while True:
         while sent < len(session.events):
             yield _sse(session.events[sent])
@@ -341,11 +373,20 @@ def _sse_live(session: RunSession) -> Iterator[str]:
         if session.done.is_set() and sent >= len(session.events):
             break
         try:
-            item = session.queue.get(timeout=15)
+            # 짧게 기다린다. 종료는 done 플래그가 판정하고 큐는 깨우는 신호일
+            # 뿐이다 — 센티널을 한 명만 집어가서 둘째 구독자의 done 이 15초
+            # 늦던 문제를 없앤다(QA 라운드 2).
+            item = session.queue.get(timeout=1.0)
         except queue.Empty:
-            yield ": keepalive\n\n"
+            idle += 1
+            if idle >= 15:
+                idle = 0
+                yield ": keepalive\n\n"
             continue
+        idle = 0
         if item is _DONE:
+            # 센티널을 다시 넣어 다른 구독자도 즉시 깨어나게 한다.
+            session.queue.put(_DONE)
             while sent < len(session.events):
                 yield _sse(session.events[sent])
                 sent += 1

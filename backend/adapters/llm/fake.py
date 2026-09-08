@@ -222,8 +222,10 @@ class FakeModel:
             return answer(find("FLEE"), True, "단장의 후퇴 명령이다. 물러난다.")
 
         if verdict == "deviate":
+            # 두고 온 사람이 있을 때만 그 이야기를 한다. "가족 없음" 을 도주
+            # 사유로 대는 건 말이 안 된다.
             life = (me.get("life") or "").strip()
-            worry = f" {life}" if life else ""
+            worry = f" {life}" if life and int(me.get("dependents", 0)) > 0 else ""
             if hp < 40 and find("FLEE"):
                 return answer(find("FLEE"), False, f"여기서 죽을 수는 없다.{worry}")
             if find("DEFEND"):

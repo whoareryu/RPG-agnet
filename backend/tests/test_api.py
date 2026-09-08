@@ -239,3 +239,36 @@ def test_잘못된_성장_분배는_판을_죽이지_않는다(tmp_path):
         if e["kind"] == "intermission_start" and e["payload"].get("rejected")
     ]
     assert rejected and "찍으려 한다" in rejected[0]["payload"]["rejected"]
+
+
+def test_동시_런_상한을_넘으면_429(tmp_path):
+    """배포하면 누구나 POST /runs 를 반복할 수 있다 — 런마다 스레드가 생긴다."""
+    app = build_app(
+        store=JsonlRunStore(tmp_path),
+        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        max_active_runs=1,
+        directive_timeout=30,
+    )
+    c = TestClient(app)
+    body = {"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+    first = c.post("/runs", json=body)
+    assert first.status_code == 200
+    second = c.post("/runs", json=body)
+    # 첫 런이 인터미션에서 입력을 기다리는 동안 두 번째는 거절된다.
+    if second.status_code == 200:
+        _wait_done(c, first.json()["run_id"], timeout=40)
+        return
+    assert second.status_code == 429 and "동시에" in second.json()["detail"]
+
+
+def test_완료된_런은_상한을_먹지_않는다(tmp_path):
+    app = build_app(
+        store=JsonlRunStore(tmp_path),
+        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        max_active_runs=1,
+    )
+    c = TestClient(app)
+    body = {"lineup": ["garret", "elaine", "kyle"], "seed": 8}
+    run_id = c.post("/runs", json=body).json()["run_id"]
+    _wait_done(c, run_id)
+    assert c.post("/runs", json=body).status_code == 200

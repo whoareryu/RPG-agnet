@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from core.trace.schema import TraceEvent
+from apps.arena.domain.entities.trace_event import TraceEvent
 
 
 @dataclass(frozen=True)

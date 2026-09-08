@@ -5,8 +5,8 @@
 가 "추천 배분" 이다 — 유저가 재분배한다(A단계: 프리셋 5 + 재분배).
 """
 
-from core.rules.stats import base_stats
-from core.types import Body, Character, Disposition, LifeContext
+from apps.arena.domain.entities.types import Body, Character, Disposition, LifeContext
+from apps.arena.domain.services.rules.stats import base_stats
 
 PRESET_ROSTER: tuple[Character, ...] = (
     Character(

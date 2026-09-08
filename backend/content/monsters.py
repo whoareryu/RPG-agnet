@@ -1,7 +1,14 @@
 """에르덴 변경의 적 (설계 §2.4). 진영 대칭 엔진의 B 진영 정의."""
 
+from apps.arena.domain.entities.types import (
+    Body,
+    EnemyDef,
+    EnemyUnitDef,
+    Equipment,
+    SkillDef,
+    Stats,
+)
 from content.classes import ARMORS, SKILLS, WEAPONS
-from core.types import Body, EnemyDef, EnemyUnitDef, Equipment, SkillDef, Stats
 
 발톱 = Equipment("썩은 발톱", 1, 0, 1, 8, "physical")
 주먹 = Equipment("강철 주먹", 3, 0, 1, 18, "physical")

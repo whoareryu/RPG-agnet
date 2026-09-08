@@ -21,7 +21,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "apps"]
 # LLM 실호출 테스트는 비용이 들고 결과가 매번 달라 CI 에서 제외한다.
 # 실행하려면: pytest -m llm
 markers = [

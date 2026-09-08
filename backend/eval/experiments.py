@@ -13,15 +13,15 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from adapters.harness.harness import Harness
-from adapters.llm.fake import FakeModel
+from apps.arena.adapter.outbound.sinks.list_sink import ListSink
+from apps.arena.adapter.outbound.strategies.dice import SeededDice
+from apps.arena.adapter.outbound.strategies.harness.harness import Harness
+from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
+from apps.arena.app.use_cases.runner import run
+from apps.arena.domain.entities.types import Disposition, MissionSpec, RunConfig
 from content.missions import MISSIONS_A
 from content.party import build_party
 from content.roster import ROSTER_BY_ID
-from core.rules.dice import SeededDice
-from core.runner import run
-from core.trace.sink import ListSink
-from core.types import Disposition, MissionSpec, RunConfig
 from eval.metrics import aggregate, metrics_of, paired
 
 

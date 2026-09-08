@@ -1,12 +1,12 @@
 from dataclasses import replace
 
+from apps.arena.domain.constants.balance import FREE_POINTS
+from apps.arena.domain.entities.types import Body, Disposition
+from apps.arena.domain.services.rules.stats import allocate
 from content.classes import CLASSES, SKILLS, choose_build
 from content.environments import MINE, SWAMP
 from content.monsters import VARGAS
 from content.roster import PRESET_ALLOCATIONS, PRESET_ROSTER, ROSTER_BY_ID
-from core.rules.constants import FREE_POINTS
-from core.rules.stats import allocate
-from core.types import Body, Disposition
 
 
 def test_프리셋_다섯은_id_가_유일하고_능력치는_전부_8이다():

@@ -14,14 +14,14 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from adapters.harness.harness import Harness  # noqa: E402
-from adapters.llm.fake import FakeModel  # noqa: E402
+from apps.arena.adapter.outbound.strategies.harness.harness import Harness  # noqa: E402
+from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel  # noqa: E402
 from content.missions import MISSIONS_A  # noqa: E402
 from content.party import build_party  # noqa: E402
-from core.rules.dice import SeededDice  # noqa: E402
-from core.runner import run  # noqa: E402
-from core.trace.schema import judgment_view  # noqa: E402
-from core.types import RunConfig  # noqa: E402
+from apps.arena.adapter.outbound.strategies.dice import SeededDice  # noqa: E402
+from apps.arena.app.use_cases.runner import run  # noqa: E402
+from apps.arena.domain.entities.trace_event import judgment_view  # noqa: E402
+from apps.arena.domain.entities.types import RunConfig  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "trace-samples" / "one-run.jsonl"
 

@@ -1,6 +1,6 @@
 """환경 — 규칙 엔진의 수정자 (설계 §2.4·§5.5). 서술은 감독 프롬프트에 그대로 들어간다."""
 
-from core.types import Environment
+from apps.arena.domain.entities.types import Environment
 
 SWAMP = Environment(
     name="늪지",

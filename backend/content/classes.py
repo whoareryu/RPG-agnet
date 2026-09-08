@@ -9,7 +9,7 @@ choose_build 는 기획서 §5 "세부" 층이다 — 무기·스킬은 유저�
 
 from dataclasses import dataclass
 
-from core.types import BuildChoice, Character, Equipment, SkillDef
+from apps.arena.domain.entities.types import BuildChoice, Character, Equipment, SkillDef
 
 # ─── 무기 ─────────────────────────────────────────────────────────────
 WEAPONS: dict[str, Equipment] = {

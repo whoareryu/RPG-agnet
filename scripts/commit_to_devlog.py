@@ -26,11 +26,13 @@ LOGS = REPO / "docs" / "devlog"
 
 # 저장소 디렉토리 → 작업 영역. 이 프로젝트의 계층(설계 문서 3.2)을 따른다.
 AREA_RULES: list[tuple[str, str]] = [
-    ("backend/core/", "core"),
-    ("backend/adapters/", "adapter"),
+    ("backend/apps/arena/domain/", "core"),
+    ("backend/apps/arena/app/", "core"),
+    ("backend/apps/arena/adapter/inbound/", "api"),
+    ("backend/apps/arena/adapter/", "adapter"),
     ("backend/content/", "content"),
     ("backend/eval/", "eval"),
-    ("backend/api/", "api"),
+    ("backend/core/", "api"),
     ("backend/", "api"),
     ("frontend/", "web"),
     ("docs/qa/", "qa"),

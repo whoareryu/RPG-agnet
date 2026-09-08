@@ -2,6 +2,9 @@
 
 설계 §3.3 의 규칙을 문서가 아니라 테스트로 만든다. secu-agent 의 같은 이름
 테스트를 이식했고, 이 프로젝트 고유의 격리 셋(성별 · 행운)을 더했다.
+
+클린 아키텍처 재배치 후로는 계층이 셋이다 — domain(최내) → app → adapter(최외).
+화살표는 안쪽으로만 간다. content · eval · core(전역 인프라)는 BC 밖이다.
 """
 
 import ast
@@ -9,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-# core/ 는 안쪽이다. content 도 바깥이다 — 세계관 데이터가 규칙 엔진에
-# 스며들면 밸런스 튠이 코드 수정이 된다(설계 §3.3).
-바깥_계층 = ("adapters", "api", "eval", "content", "tests")
+DOMAIN = Path("apps/arena/domain")
+APP = Path("apps/arena/app")
+ADAPTER = Path("apps/arena/adapter")
 
 인프라_프레임워크 = (
     "fastapi",
@@ -35,21 +38,23 @@ def _모듈_이름들_추출(tree: ast.AST) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 names.append(node.module)
-    return [n.split(".")[0] for n in names]
+    return names
 
 
-def _최상위_import(py: Path) -> list[str]:
+def _import_모듈들(py: Path) -> list[str]:
+    """전체 점 표기 모듈명. 계층이 apps.arena.* 아래로 들어가 최상위 이름만으로는
+    구분되지 않는다 — 접두사로 판별한다."""
     return _모듈_이름들_추출(ast.parse(py.read_text(encoding="utf-8")))
 
 
-def _core_파일들() -> list[Path]:
-    return sorted(Path("core").rglob("*.py"))
+def _파일들(root: Path) -> list[Path]:
+    return sorted(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 def _속성_접근_파일들(root: str, attr: str) -> set[str]:
     """root 아래에서 `.attr` 속성을 읽는 파일 집합."""
     hits: set[str] = set()
-    for py in sorted(Path(root).rglob("*.py")):
+    for py in _파일들(Path(root)):
         tree = ast.parse(py.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == attr:
@@ -57,52 +62,79 @@ def _속성_접근_파일들(root: str, attr: str) -> set[str]:
     return hits
 
 
-def test_core_에_검사할_파일이_있다():
-    assert _core_파일들(), "core/ 에 파이썬 파일이 없다"
+def _금지_접두사(py: Path, 금지: tuple[str, ...]) -> None:
+    for name in _import_모듈들(py):
+        for 접두 in 금지:
+            assert not (name == 접두 or name.startswith(접두 + ".")), (
+                f"{py} 가 {name} 을 import 한다 — 계층 역전"
+            )
 
 
-@pytest.mark.parametrize("py", _core_파일들(), ids=lambda p: str(p))
-def test_core_는_바깥_계층을_import_하지_않는다(py):
-    for name in _최상위_import(py):
-        assert name not in 바깥_계층, f"{py} 가 바깥 계층 {name} 을 import 한다"
+def test_각_계층에_검사할_파일이_있다():
+    assert _파일들(DOMAIN), "domain/ 에 파이썬 파일이 없다"
+    assert _파일들(APP), "app/ 에 파이썬 파일이 없다"
+    assert _파일들(ADAPTER), "adapter/ 에 파이썬 파일이 없다"
 
 
-@pytest.mark.parametrize("py", _core_파일들(), ids=lambda p: str(p))
-def test_core_는_인프라_프레임워크를_import_하지_않는다(py):
-    for name in _최상위_import(py):
-        assert name not in 인프라_프레임워크, f"{py} 가 {name} 을 import 한다"
+@pytest.mark.parametrize("py", _파일들(DOMAIN), ids=str)
+def test_domain_은_바깥_계층을_import_하지_않는다(py):
+    """최내층. app · adapter 도, BC 밖(content · eval · core)도 모른다."""
+    _금지_접두사(py, ("apps.arena.app", "apps.arena.adapter", "content", "eval", "core", "tests"))
 
 
-@pytest.mark.parametrize("py", _core_파일들(), ids=lambda p: str(p))
-def test_core_는_random_을_직접_쓰지_않는다(py):
+@pytest.mark.parametrize("py", _파일들(APP), ids=str)
+def test_app_은_adapter_를_import_하지_않는다(py):
+    """유스케이스는 domain 만 안다. 어댑터 선택은 조립 지점(dependencies)의 일이다."""
+    _금지_접두사(py, ("apps.arena.adapter", "content", "eval", "tests"))
+
+
+@pytest.mark.parametrize("py", _파일들(DOMAIN) + _파일들(APP), ids=str)
+def test_안쪽_계층은_인프라_프레임워크를_import_하지_않는다(py):
+    for name in _import_모듈들(py):
+        assert name.split(".")[0] not in 인프라_프레임워크, f"{py} 가 {name} 을 import 한다"
+
+
+@pytest.mark.parametrize("py", _파일들(DOMAIN) + _파일들(APP), ids=str)
+def test_안쪽_계층은_random_을_직접_쓰지_않는다(py):
     """난수는 전부 Dice 포트를 통한다 — 같은 시드 = 같은 판(설계 §3.4).
 
-    예외는 SeededDice 자신뿐이다. random.Random 을 감싸는 곳이 거기다.
+    SeededDice 는 adapter/outbound/strategies/dice.py 로 나갔다. 재배치 전에는
+    core 안에 있어 파일 이름으로 예외를 뒀지만, 이제 예외가 필요 없다.
     """
-    if py.name == "dice.py":
-        return
-    assert "random" not in _최상위_import(py), f"{py} 가 random 을 직접 import 한다"
+    for name in _import_모듈들(py):
+        assert name.split(".")[0] != "random", f"{py} 가 random 을 직접 import 한다"
 
 
 def test_성별은_엔진에_닿지_않는다():
-    """기획서 §4.4 "전투·능력치·판단 엔진에 영향 0" 을 테스트로 만든다.
-
-    허용되는 곳은 서사 표기(core/agents/narration.py)뿐이다.
-    """
+    """기획서 §4.4 "전투·능력치·판단 엔진에 영향 0" 을 테스트로 만든다."""
     # narration 은 표기를 만들고, runner 는 그 값을 트레이스에 실어 리플레이가
     # 같은 설정을 복원하게 한다. 둘 다 판단이 아니다 — 규칙·전투·판단 층은 못 읽는다.
-    허용 = {"core/agents/narration.py", "core/runner.py"}
-    hits = _속성_접근_파일들("core", "gender")
+    허용 = {
+        "apps/arena/app/use_cases/agents/narration.py",
+        "apps/arena/app/use_cases/runner.py",
+    }
+    hits = _속성_접근_파일들("apps/arena/domain", "gender") | _속성_접근_파일들(
+        "apps/arena/app", "gender"
+    )
     assert hits <= 허용, f"서사 표기 밖에서 gender 를 읽는다: {hits - 허용}"
-    금지 = ("core/rules", "core/battle", "core/judgment", "core/intermission")
+    금지 = (
+        "apps/arena/domain/services/rules",
+        "apps/arena/domain/services/battle",
+        "apps/arena/domain/services/judgment",
+        "apps/arena/app/use_cases/intermission",
+    )
     for root in 금지:
         assert not _속성_접근_파일들(root, "gender"), f"{root} 가 gender 를 읽는다"
 
 
 def test_행운은_판단에_개입하지_않는다():
-    """기획서 §4.2 — 행운은 굴림에만. core/judgment 는 luck 을 읽지 않는다."""
+    """기획서 §4.2 — 행운은 굴림에만. 판단 층은 luck 을 읽지 않는다."""
     # 굴림에만 쓴다 — 판단 층(judgment)도, 프롬프트 조립(agents)도 읽지 않는다.
     # 콘텐츠의 빌드 선택도 판단이므로 함께 막는다(QA 라운드 1 P1-6).
-    허용 = {"core/rules/combat.py"}
-    hits = _속성_접근_파일들("core", "luck") | _속성_접근_파일들("content", "luck")
+    허용 = {"apps/arena/domain/services/rules/combat.py"}
+    hits = (
+        _속성_접근_파일들("apps/arena/domain", "luck")
+        | _속성_접근_파일들("apps/arena/app", "luck")
+        | _속성_접근_파일들("content", "luck")
+    )
     assert hits <= 허용, f"굴림 밖에서 luck 을 읽는다: {hits - 허용}"

@@ -9,10 +9,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+COPY apps/ apps/
 COPY core/ core/
-COPY adapters/ adapters/
 COPY content/ content/
-COPY api/ api/
 COPY eval/ eval/
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -28,4 +27,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"
 
-CMD ["uvicorn", "api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "apps.arena.adapter.inbound.api.v1.arena_router:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

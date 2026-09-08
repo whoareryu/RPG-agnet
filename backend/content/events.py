@@ -2,7 +2,7 @@
 
 카테고리 스키마는 고정하고 effect 범위를 제한한다 — 자유도는 서사에, 안정성은
 스키마에. B단계에서 쓰는 effect 는 `param_change` 하나뿐이고, 나머지(이탈·충원·
-복귀·사망)는 타입만 선언돼 있다(`core.types.EventEffectKind`).
+복귀·사망)는 타입만 선언돼 있다(`apps.arena.domain.entities.types.EventEffectKind`).
 
 성별은 **사유 목록**에만 관여한다. 어느 사유로 빠지느냐가 다를 뿐이고, 이번
 단계에서 성별이 바꾸는 것은 서사 문구뿐이다(기획서 §4.4).

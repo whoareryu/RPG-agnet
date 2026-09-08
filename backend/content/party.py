@@ -2,12 +2,12 @@
 
 from dataclasses import replace
 
+from apps.arena.app.use_cases.agents.narration import voice
+from apps.arena.app.use_cases.runner import PartyMember
+from apps.arena.domain.entities.types import Character, RunConfig
+from apps.arena.domain.services.rules.stats import allocate
 from content.classes import CLASSES, choose_build
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
-from core.agents.narration import voice
-from core.rules.stats import allocate
-from core.runner import PartyMember
-from core.types import Character, RunConfig
 
 
 def apply_direction(config: RunConfig, cid: str) -> Character:

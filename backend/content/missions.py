@@ -1,8 +1,8 @@
 """미션 정의. 에피소드 길이는 파라미터다(기획서 §7.1) — 리스트 길이가 N 이다."""
 
+from apps.arena.domain.entities.types import MissionSpec
 from content.environments import MINE, SWAMP
 from content.monsters import GHOUL_PACK, VARGAS
-from core.types import MissionSpec
 
 # A단계: 보스전 1판. 로스터 5 / 출전 최대 3(기획서 §7.4).
 # 하한이 1 인 이유: 기획서 §7.2 가 "A·B 단계 출전 1~3" 이라 못박았고, §8.1 이

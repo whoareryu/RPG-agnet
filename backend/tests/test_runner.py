@@ -1,5 +1,3 @@
-from dataclasses import asdict
-
 import pytest
 
 from adapters.harness.harness import Harness
@@ -8,6 +6,7 @@ from content.missions import MISSIONS_A
 from content.party import build_party
 from core.rules.dice import SeededDice
 from core.runner import run
+from core.trace.schema import judgment_view
 from core.types import RunConfig
 
 
@@ -39,7 +38,7 @@ def _run(config, run_id="r"):
 
 
 def _strip_ts(events):
-    return [{k: v for k, v in asdict(e).items() if k != "ts"} for e in events]
+    return [judgment_view(e) for e in events]
 
 
 def test_A단계_한_판이_30턴_안에_끝난다():
@@ -95,9 +94,12 @@ def test_후퇴가_실제로_발생하는_시드가_있다():
     assert found.results[0].outcome in ("retreat", "lose", "draw", "win")
 
 
-def test_출전_인원이_맞지_않으면_거부한다():
-    with pytest.raises(ValueError, match="3~3명"):
-        build_party(_config(lineup=("garret", "elaine")))
+def test_출전_인원_상한을_넘으면_거부한다():
+    """하한은 1 이다 — 혼자 가는 것도 단주의 선택(기획서 §7.2·§8.1)."""
+    build_party(_config(lineup=("garret",)))
+    build_party(_config(lineup=("garret", "elaine")))
+    with pytest.raises(ValueError, match="1~3명"):
+        build_party(_config(lineup=("garret", "elaine", "kyle", "thomas")))
 
 
 def test_같은_캐릭터_중복_출전은_거부한다():
@@ -114,3 +116,69 @@ def test_트롤픽_전사_셋도_돈다():
     assert rec.results[0].outcome in ("win", "lose", "retreat", "draw")
     start = rec.events[0].payload
     assert all(r["class"] == "warrior" for r in start["roster"])
+
+
+# ─── QA 라운드 1 회귀 ──────────────────────────────────────────────────
+
+
+def test_이탈과_적응이_실제로_재계획을_부른다():
+    """기획서 §8.3 의 트리거 4종 중 둘이 죽어 있었다(QA 라운드 1 P0-1).
+
+    신호는 턴 안에서 쌓이고 다음 턴 시작에 읽힌다 — 읽기 전에 비우면 안 된다.
+    """
+    kinds = set()
+    for seed in range(1, 12):
+        rec = _run(_config(seed=seed))
+        kinds |= {e.payload["trigger"] for e in rec.events if e.kind == "replan_trigger"}
+    assert "deviation" in kinds, "이탈이 재계획을 부르지 않는다"
+    assert "adaptation" in kinds, "보스 적응이 재계획을 부르지 않는다"
+
+
+def test_30턴까지_모든_유닛이_행동한다():
+    """QA 라운드 1 P1-4 — 턴 상한을 유닛 루프 안에서 보면 마지막 턴이 잘린다."""
+    for seed in range(1, 40):
+        rec = _run(_config(seed=seed))
+        if rec.results[0].outcome != "draw":
+            continue
+        last = max(e.turn for e in rec.events)
+        order = [e for e in rec.events if e.kind == "turn_start" and e.turn == last][0]
+        acted = {e.actor for e in rec.events if e.kind == "resolution" and e.turn == last}
+        assert len(acted) == len(order.payload["order"]), f"seed {seed}: 마지막 턴이 잘렸다"
+        return
+    raise AssertionError("무승부 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다")
+
+
+def test_전사는_실제로_적을_친다():
+    """QA 라운드 1 P0-4 — Fake 가 스킬 목록 첫 번째를 골라 자기 방어만 했다."""
+    total = 0
+    for seed in range(1, 6):
+        rec = _run(_config(seed=seed))
+        total += sum(
+            s["damage"]
+            for e in rec.events
+            if e.kind == "resolution" and e.actor == "garret"
+            for s in e.payload["strikes"]
+        )
+    assert total > 0, "전사가 다섯 판 동안 아무에게도 피해를 주지 못했다"
+
+
+def test_죽은_단원은_다음_판에_나오지_않는다():
+    """기획서 §6.6 — 사망은 소멸이다(QA 라운드 1 P0-5)."""
+    from dataclasses import replace as _replace
+
+    from content.missions import MISSIONS_B
+
+    # 혼자 둘을 상대하면 1판에서 죽는 시드가 나온다(출전 1~3, 기획서 §7.2).
+    for seed in range(1, 60):
+        cfg = _replace(_config(seed=seed, lineup=("kyle", "elaine")), missions=MISSIONS_B)
+        rec = _run(cfg)
+        if len(rec.results) < 2 or not rec.results[0].dead:
+            continue
+        dead = set(rec.results[0].dead)
+        second = [e for e in rec.events if e.kind == "mission_start" and e.mission == 2][0]
+        나온_사람 = {p["id"] for p in second.payload["party"]}
+        assert not (dead & 나온_사람), f"seed {seed}: 죽은 {dead & 나온_사람} 이(가) 2판에 섰다"
+        return
+    raise AssertionError(
+        "1판에 사망자가 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다"
+    )

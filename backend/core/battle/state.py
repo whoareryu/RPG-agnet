@@ -117,6 +117,8 @@ class Battle:
     summoned: int = 0
     summon_every: int = 0
     retreat_ordered: bool = False
+    # 직전 작전 때의 승산. 감독이 추세를 본다 — 한 번 낮게 찍혔다고 판을 접지 않는다.
+    last_plan_odds: float | None = None
     turn_limit: int = TURN_LIMIT
 
     @property
@@ -176,6 +178,11 @@ def unit_from_enemy(e: EnemyUnitDef, faction: str, suffix: str = "") -> UnitStat
         armor_mods=efficiency(e.body, e.stats, e.armor),
         is_boss=e.is_boss,
     )
+
+
+def display_names(battle: Battle) -> dict[str, str]:
+    """id → 표시 이름. 프롬프트와 서사가 id 를 쓰지 않게 하는 단일 출처."""
+    return {u.id: u.name for u in battle.units.values()}
 
 
 def living(battle: Battle, faction: str) -> list[UnitState]:
@@ -251,16 +258,20 @@ def available_actions(battle: Battle, unit_id: str) -> list[Action]:
     return out
 
 
-def outcome(battle: Battle) -> str | None:
+def outcome(battle: Battle, end_of_turn: bool = False) -> str | None:
     """A진영(party) 기준. None 이면 계속.
 
     후퇴 명령 뒤에 파티가 전장에서 사라지면 "retreat", 명령 없이 사라지면 "lose".
     턴 상한은 무승부 — 승산으로 판정하지 않는다. 판정하면 실험이 오염된다(설계 §5.2).
+
+    **턴 상한은 end_of_turn 에서만 본다.** 유닛 루프 안에서 함께 보면 30턴째의
+    첫 행동 하나만 해석되고 나머지 유닛의 턴이 통째로 사라진다(설계 §5.2 의
+    루프 순서: 유닛별 행동 → 턴 종료 → 승리 조건).
     """
     if not living(battle, battle.enemy):
         return "win"
     if not living(battle, battle.party):
         return "retreat" if battle.retreat_ordered else "lose"
-    if battle.turn >= battle.turn_limit:
+    if end_of_turn and battle.turn >= battle.turn_limit:
         return "draw"
     return None

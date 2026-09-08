@@ -197,3 +197,52 @@ def test_수하는_모델_없이_가장_약한_적을_친다():
     a = minion_act(b, "vargas", tracer)  # 보스를 수하 정책으로 돌려도 동작한다
     assert a.target == "kyle" and a.kind in ("ATTACK", "SKILL")
     assert sink.of_kind("decision")[0].payload["model"]["model"] == "policy"
+
+
+# ─── QA 라운드 1 회귀 ──────────────────────────────────────────────────
+
+
+def test_후퇴_명령은_모델에게_묻지_않는다():
+    """설계 §5.3 — 후퇴는 선택지가 아니라 명령이다. 모델이 계속 싸우겠다고 해도 뺀다."""
+    b = _battle()
+    b.retreat_ordered = True
+    tracer, sink = _tracer()
+    m = 고정모델({"action": "ATTACK", "target": "vargas", "follows_plan": True, "reason": "싸운다"})
+    d = character_act(b, "kyle", None, m, FixedDice([1], uniforms=[0.99]), tracer, 0.1)
+    assert d.action.kind == "FLEE"
+    dec = sink.of_kind("decision")[0].payload
+    assert dec["verdict"] == "retreat" and dec["model"]["model"] == "order"
+
+
+def test_이탈이면_방침_행동이_선택지에서_빠진다():
+    """설계 §6.4 — 이탈은 라벨이 아니라 선택지의 변화다."""
+    from core.types import Plan
+
+    b = _battle()
+    b.units["kyle"].hp = 3
+    plan = Plan("x", True, "rush", {}, "vargas", {"kyle": "vargas 공격"}, 0.3, "r")
+    tracer, sink = _tracer()
+    m = 고정모델({"action": "ATTACK", "target": "vargas", "follows_plan": True, "reason": "싸운다"})
+    d = character_act(b, "kyle", plan, m, FixedDice([1], uniforms=[0.0]), tracer, 0.5)
+    assert d.compliance.verdict == "deviate"
+    assert not (d.action.kind == "ATTACK" and d.action.target == "vargas")
+
+
+def test_적응은_실제로_바뀐_것을_남긴다():
+    """QA 라운드 1 P1-9 — 같은 적응을 세 번 기록하면서 상태가 그대로면 로그가 거짓말한다."""
+    b = _battle()
+    b.turn = 4
+    _history(b, "garret", [1, 2, 3])
+    tracer, sink = _tracer()
+    boss_act(b, "vargas", FakeModel(), tracer)
+    eff = sink.of_kind("boss_adapt")[0].payload["effect"]
+    assert eff["field"] == "boss_focus" and eff["after"] == "garret" and eff["no_change"] is False
+
+
+def test_보스_적응_대상은_해시_순서에_기대지_않는다():
+    """QA 라운드 1 P0-3 — set 순회는 PYTHONHASHSEED 마다 다른 판을 만든다."""
+    b = _battle()
+    b.turn = 4
+    _history(b, "kyle", [1, 2, 3])  # 카일이 먼저 치기 시작했다
+    _history(b, "garret", [1, 2, 3])
+    assert detect_adaptation(b, "vargas")[1]["actor"] == "kyle"

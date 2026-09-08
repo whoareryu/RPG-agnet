@@ -65,6 +65,10 @@ RETREAT_THRESHOLD_DEFAULT = 0.30
 RETREAT_THRESHOLD_RANGE = (0.15, 0.45)
 ODDS_COLLAPSE_STEP = 0.10  # 재진입 트리거는 0.1 씩 더 내려갈 때마다
 REPLAN_MAX_CONSECUTIVE = 3
+# 이탈은 자주 일어난다(성향이 그렇게 생긴 단원이 있다). 이탈마다 감독을 부르면
+# 23턴에 14번을 불러 호출 예산(기획서 §7.1: 100~300)을 먹고 로그가 재계획으로 덮인다.
+# 승산 붕괴·적응은 쿨다운 없이 즉시 부른다.
+REPLAN_DEVIATION_COOLDOWN = 3
 
 # ─── 순응 판정 (설계 §6.4) ────────────────────────────────────────────
 PRESSURE_HP_WEIGHT = 0.5

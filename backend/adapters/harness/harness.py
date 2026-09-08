@@ -53,7 +53,7 @@ class Harness:
                     validate(data, schema) if isinstance(data, dict) else ["응답이 객체가 아니다"]
                 )
                 if not errors:
-                    data["_meta"] = self._meta(self._model.name, False, attempts, None, t0)
+                    self._stamp(data, self._model.name, False, attempts, None, t0)
                     return data
             current = (
                 prompt
@@ -68,17 +68,33 @@ class Harness:
     ) -> dict[str, Any]:
         self.fallbacks += 1
         data = self._fallback.decide(role, prompt, schema)
-        data["_meta"] = self._meta(self._fallback.name, True, attempts, reason, t0)
+        # 폴백 응답도 검증한다. 폴백이 스키마를 깨면 코어가 KeyError 로 죽는데,
+        # 그때 원인이 "모델이 이상했다" 로 보이면 안 된다 — 폴백이 깨진 건 우리 버그다.
+        errors = validate(data, schema) if isinstance(data, dict) else ["폴백 응답이 객체가 아니다"]
+        if errors:
+            raise RuntimeError(f"폴백({self._fallback.name})이 {role} 스키마를 어겼다: {errors}")
+        self._stamp(data, self._fallback.name, True, attempts, reason, t0)
         return data
 
     @staticmethod
-    def _meta(
-        model: str, fallback: bool, attempts: int, reason: str | None, t0: float
-    ) -> dict[str, Any]:
-        return {
+    def _stamp(
+        data: dict[str, Any],
+        model: str,
+        fallback: bool,
+        attempts: int,
+        reason: str | None,
+        t0: float,
+    ) -> None:
+        """판정 메타와 시간 메타를 **나눠서** 붙인다.
+
+        latency_ms 가 _meta 안에 있으면 그 값이 트레이스 payload 에 실려
+        "같은 시드 = 같은 트레이스" 비교가 매번 깨진다(측정한 시간은 매번 다르다).
+        결정론 비교의 정본은 payload 에서 `timing` 을 뺀 것이다.
+        """
+        data["_meta"] = {
             "model": model,
             "fallback": fallback,
             "fallback_reason": reason,
             "attempts": attempts,
-            "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
         }
+        data["_timing"] = {"latency_ms": round((time.perf_counter() - t0) * 1000, 1)}

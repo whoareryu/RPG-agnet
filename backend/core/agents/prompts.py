@@ -16,9 +16,10 @@ import json
 from typing import Any
 
 from core.battle.state import Battle, UnitState, living
-from core.rules.constants import RETREAT_THRESHOLD_DEFAULT
+from core.rules.combat import flee_chance
+from core.rules.constants import RETREAT_THRESHOLD_DEFAULT, RETREAT_THRESHOLD_RANGE
 from core.rules.disposition import describe
-from core.types import Action, Plan
+from core.types import Action, Plan, SkillDef
 
 CTX_OPEN = "<<CONTEXT_JSON>>"
 CTX_CLOSE = "<<END>>"
@@ -40,11 +41,13 @@ def build_orchestrator_prompt(
     reason: str,
     forced: bool = False,
     previous: Plan | None = None,
+    previous_odds: float | None = None,
 ) -> str:
     env = battle.environment
     mine = living(battle, faction)
     other = battle.enemy if faction == battle.party else battle.party
     foes = living(battle, other)
+    lost = [u for u in battle.units.values() if u.faction == faction and not u.active]
 
     units_ctx = [
         {
@@ -67,15 +70,27 @@ def build_orchestrator_prompt(
             "id": f.id,
             "name": f.name,
             "hp_bucket": _hp_bucket(f),
+            "hp": f.hp,
+            "hp_pct": round(100 * f.hp / f.hp_max),
             "is_boss": f.is_boss,
             "position": f.position,
             "can_heal": any(s.effect == "heal" for s in f.skills),
         }
         for f in foes
     ]
+    # 후퇴에도 비용이 있다(설계 §5.3) — 도망 판정에 실패한 유닛은 한 턴을 잃고 맞는다.
+    # 느린 파티에게 후퇴 명령은 사형선고가 될 수 있으므로 단장이 이것을 보고 판단해야 한다.
+    # 가장 느린 사람이 후퇴 가능 여부를 정한다 — 평균을 쓰면 빠른 둘이 빠지고
+    # 느린 하나가 남아 맞아 죽는 판을 감독이 "뺄 수 있다" 로 읽는다.
+    escapes = [flee_chance(u, foes)[0] for u in mine] or [0]
+    escape_avg = round(min(escapes) / 100, 2)
+
     lines = [
         "당신은 용병단의 단장이다. 단주가 준 인원으로 최선을 다한다. 받은 패로 싸운다.",
         "먼저 '싸울 가치가 있는가'를 판단하고, 있다면 작전을 짠다.",
+        f"가장 느린 단원의 도주 성공률: {escape_avg:.0%}. 낮으면 후퇴하다 더 크게 잃는다.",
+        f"이미 잃은 인원: {len(lost)}명. 사람이 쓰러진 뒤의 후퇴는 늦다 — "
+        "빼려면 온전할 때 빼야 값이 싸다.",
         f"환경: {env.name} — {env.description}",
         f"환경 수치: 중갑 속도 페널티 {env.speed_penalty_by_weight}, "
         f"스태미나 배수 {env.stamina_multiplier}, 피해 배수 {env.damage_modifiers}, "
@@ -87,6 +102,9 @@ def build_orchestrator_prompt(
         lines.append("경고: 재계획이 연속 3회를 넘었다. 이번에는 포기 여부를 반드시 결정하라.")
     if previous:
         lines.append(f"직전 작전: {previous.strategy} / {previous.assessment}")
+    if previous_odds is not None:
+        direction = "나빠지는 중" if odds_value < previous_odds else "버티는 중"
+        lines.append(f"직전 승산 {previous_odds:.2f} → 지금 {odds_value:.2f} ({direction})")
     lines.append("출전 단원:")
     for u in units_ctx:
         d = u["disposition"]
@@ -105,13 +123,17 @@ def build_orchestrator_prompt(
         "JSON 으로만 답하라: assessment, worth_fighting, "
         "strategy(rush|attrition|defensive|retreat), "
         "formation{unit_id: front|back}, focus_target, per_unit_directive{unit_id: 지시}, "
-        f"retreat_threshold(0.15..0.45, 기본 {RETREAT_THRESHOLD_DEFAULT}), rationale"
+        f"retreat_threshold({RETREAT_THRESHOLD_RANGE[0]}..{RETREAT_THRESHOLD_RANGE[1]}, "
+        f"기본 {RETREAT_THRESHOLD_DEFAULT}), rationale"
     )
     ctx = {
         "role": "orchestrator",
         "units": units_ctx,
         "enemies": foes_ctx,
         "odds": odds_value,
+        "escape_chance": escape_avg,
+        "previous_odds": previous_odds,
+        "losses": len(lost),
         "reason": reason,
         "forced": forced,
         "environment": {
@@ -120,6 +142,7 @@ def build_orchestrator_prompt(
             "range_penalty": env.range_penalty,
         },
         "retreat_threshold_default": RETREAT_THRESHOLD_DEFAULT,
+        "names": {u.id: u.name for u in [*mine, *foes]},
     }
     return "\n".join(lines) + _ctx(ctx)
 
@@ -137,6 +160,7 @@ def build_character_prompt(
     plan: Plan | None,
     actions: list[Action],
     verdict: str,
+    names: dict[str, str] | None = None,
 ) -> str:
     directive = plan.per_unit_directive.get(unit.id) if plan else None
     focus = plan.focus_target if plan else None
@@ -168,10 +192,12 @@ def build_character_prompt(
     lines.append("보이는 것: " + json.dumps(visible, ensure_ascii=False))
     if masked:
         lines.append("보이지 않는 것(판단력 한계): " + ", ".join(masked))
+    if unit.skills:
+        lines.append("가진 기술: " + ", ".join(_skill_text(s) for s in unit.skills))
     lines.append("가능한 행동: " + ", ".join(_action_text(a) for a in actions))
     lines.append(
         "JSON 으로만 답하라: action(ATTACK|DEFEND|SKILL|MOVE|FLEE|WAIT), target, skill, position, "
-        "follows_plan(bool), reason(한 문장)"
+        "follows_plan(bool), reason(한 문장). 이름을 쓸 때는 id 가 아니라 표시 이름을 쓴다."
     )
     ctx = {
         "role": "character",
@@ -183,6 +209,10 @@ def build_character_prompt(
             "stamina_max": unit.stamina_max,
             "position": unit.position,
             "can_heal": any(s.effect == "heal" for s in unit.skills),
+            # 이탈 사유에 생애가 나타나야 한다 — 기획서 §9 의 예시가
+            # "생존 우선순위 상향, 가족 부양 책임" 이다.
+            "life": unit.life_note,
+            "dependents": unit.dependents,
         },
         "verdict": verdict,
         "directive": directive,
@@ -191,6 +221,11 @@ def build_character_prompt(
         "visible": visible,
         "masked": masked,
         "available": [_action_ctx(a) for a in actions],
+        # 스킬이 무엇을 하는지 — 이게 없으면 읽는 쪽(모델이든 Fake 든)이 방패
+        # 밀치기(자기 방어)와 강타(피해)를 구분하지 못한다(QA 라운드 1 P0-4).
+        "skills": [_skill_ctx(s) for s in unit.skills],
+        # id → 표시 이름. 모델이 쓰는 사유가 화면에 그대로 나가므로 id 를 쓰면 안 된다.
+        "names": names or {},
     }
     return "\n".join(lines) + _ctx(ctx)
 
@@ -209,6 +244,35 @@ def _action_ctx(a: Action) -> dict[str, Any]:
     return {"kind": a.kind, "target": a.target, "skill": a.skill, "position": a.position}
 
 
+_EFFECT_KO = {
+    "damage": "피해",
+    "snipe": "후열 저격",
+    "crit": "치명 확률이 높은 피해",
+    "double": "두 번 타격",
+    "heal": "아군 치유",
+    "guard": "자기 방어력 상승",
+    "slow": "적 속도 감소",
+    "blind": "적 명중 감소",
+    "bless": "아군 명중 상승",
+}
+
+
+def _skill_text(s: SkillDef) -> str:
+    return f"{s.name}({_EFFECT_KO.get(s.effect, s.effect)}, 스태미나 {s.cost})"
+
+
+def _skill_ctx(s: SkillDef) -> dict[str, Any]:
+    return {
+        "name": s.name,
+        "effect": s.effect,
+        "target": s.target,
+        "cost": s.cost,
+        "base": s.base,
+        # 피해를 내는 기술인가 — 이 한 비트가 방패 밀치기와 강타를 가른다.
+        "offensive": s.effect in ("damage", "snipe", "crit", "double"),
+    }
+
+
 def build_boss_prompt(
     battle: Battle,
     unit: UnitState,
@@ -216,6 +280,7 @@ def build_boss_prompt(
     adapt_suggestion: str | None,
     focus_override: str | None,
 ) -> str:
+    names = {u.id: u.name for u in battle.units.values()}
     foes = [u for u in battle.units.values() if u.faction != unit.faction and u.active]
     foes_ctx = [
         {
@@ -252,6 +317,8 @@ def build_boss_prompt(
         "adapt_suggestion": adapt_suggestion,
         "focus_override": focus_override,
         "available": [_action_ctx(a) for a in actions],
+        "skills": [_skill_ctx(s) for s in unit.skills],
+        "names": names,
         "turn": battle.turn,
     }
     return "\n".join(lines) + _ctx(ctx)

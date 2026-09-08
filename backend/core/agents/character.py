@@ -11,7 +11,7 @@ from typing import Any
 
 from core.agents.prompts import build_character_prompt
 from core.agents.schemas import CHARACTER_SCHEMA
-from core.battle.state import Battle, available_actions
+from core.battle.state import Battle, available_actions, display_names
 from core.judgment.compliance import ComplianceRecord, judge_compliance
 from core.judgment.visibility import visible_context
 from core.ports import DecisionModel, Dice
@@ -44,6 +44,17 @@ def action_from(data: dict[str, Any], actions: list[Action]) -> tuple[Action, st
     return Action("WAIT"), f"{kind} 은 지금 할 수 없다 → WAIT"
 
 
+def _without_plan_actions(actions: list[Action], plan: Plan | None, unit_id: str) -> list[Action]:
+    """방침이 가리키는 행동을 뺀다. 전부 빠지면(달리 할 게 없으면) 그대로 둔다."""
+    if plan is None:
+        return actions
+    focus = plan.focus_target
+    left = [
+        a for a in actions if not (focus and a.target == focus and a.kind in ("ATTACK", "SKILL"))
+    ]
+    return left or actions
+
+
 def character_act(
     battle: Battle,
     unit_id: str,
@@ -66,7 +77,37 @@ def character_act(
     tracer.emit("compliance", comp.as_payload(), actor=unit_id)
 
     actions = available_actions(battle, unit_id)
-    prompt = build_character_prompt(unit, visible, masked, plan, actions, comp.verdict)
+
+    # 후퇴 명령은 선택지가 아니다(설계 §5.3). 예전에는 모델에게 물었고, 방침이
+    # "후퇴" 인데 계속 싸우는 응답이 오면 트레이스에 abandon 만 남고 판은 이어졌다 —
+    # 인스펙터가 거짓말을 했다. 모델을 부르지 않으므로 호출도 아낀다.
+    if battle.retreat_ordered:
+        flee = next((a for a in actions if a.kind == "FLEE"), None) or Action("WAIT")
+        tracer.emit(
+            "decision",
+            {
+                "action": flee,
+                "label": flee.label(),
+                "target": None,
+                "follows_plan": True,
+                "verdict": "retreat",
+                "reason": "단장의 후퇴 명령이다. 물러난다.",
+                "note": None if flee.kind == "FLEE" else "도망칠 힘이 없다",
+                "model": {"model": "order", "fallback": False, "attempts": 0},
+                "timing": {},
+            },
+            actor=unit_id,
+        )
+        return CharacterDecision(flee, comp, True, "단장의 후퇴 명령이다. 물러난다.")
+
+    if comp.verdict == "deviate":
+        # 이탈은 라벨이 아니라 선택지의 변화다(설계 §6.4). 방침이 시키는 행동을
+        # 목록에서 빼야 "이탈했는데 방침대로 쳤다" 는 기록이 나오지 않는다.
+        actions = _without_plan_actions(actions, plan, unit_id)
+
+    prompt = build_character_prompt(
+        unit, visible, masked, plan, actions, comp.verdict, display_names(battle)
+    )
     data = model.decide("character", prompt, CHARACTER_SCHEMA)
     action, note = action_from(data, actions)
 
@@ -84,8 +125,9 @@ def character_act(
             "reason": reason,
             "note": note,
             "model": data.get("_meta", {}),
+            "timing": data.get("_timing", {}),
             "prompt": prompt,
-            "raw": {k: v for k, v in data.items() if k != "_meta"},
+            "raw": {k: v for k, v in data.items() if not k.startswith("_")},
         },
         actor=unit_id,
     )

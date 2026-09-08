@@ -70,3 +70,22 @@ def test_환경_수치는_설계와_같다():
 def test_보스는_유닛_하나와_소환_규칙이다():
     assert len(VARGAS.units) == 1 and VARGAS.units[0].is_boss
     assert VARGAS.summon_every == 3 and VARGAS.summon_max == 2
+
+
+def test_출전은_1명부터_3명까지다():
+    """기획서 §7.2 — A·B 단계 출전 1~3. 혼자 가는 것도 단주의 선택이다."""
+    from content.missions import MISSIONS_A, MISSIONS_B
+
+    for m in (*MISSIONS_A, *MISSIONS_B):
+        assert (m.lineup_min, m.lineup_max) == (1, 3), m.name
+
+
+def test_도적_무기는_행운이_아니라_민첩이_고른다():
+    """기획서 §4.2 — 행운은 판단에 개입하지 않는다. 투척/단검은 사거리를 바꾼다."""
+    from dataclasses import replace
+
+    base = ROSTER_BY_ID["thomas"]
+    빠름 = replace(base, stats=replace(base.stats, agi=14, luck=1))
+    느림 = replace(base, stats=replace(base.stats, agi=8, luck=20))
+    assert choose_build(빠름).weapon.ranged is True
+    assert choose_build(느림).weapon.ranged is False

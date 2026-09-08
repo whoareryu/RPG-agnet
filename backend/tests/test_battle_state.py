@@ -65,10 +65,12 @@ def test_후퇴_명령_없이_전원이_사라지면_패배_명령이_있으면_
     assert outcome(b) == "retreat"
 
 
-def test_턴_상한은_무승부():
+def test_턴_상한은_턴_종료에서만_무승부다():
+    """유닛 루프 안에서 함께 보면 30턴째 첫 행동 하나로 판이 잘린다(QA 라운드 1 P1-4)."""
     b = _battle()
     b.turn = 30
-    assert outcome(b) == "draw"
+    assert outcome(b) is None
+    assert outcome(b, end_of_turn=True) == "draw"
 
 
 def test_치유_스킬은_자기와_아군을_대상으로_한다():

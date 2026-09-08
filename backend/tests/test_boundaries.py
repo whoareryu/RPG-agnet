@@ -89,21 +89,15 @@ def test_성별은_엔진에_닿지_않는다():
 
     허용되는 곳은 서사 표기(core/agents/narration.py)뿐이다.
     """
-    금지_영역 = ("core/rules", "core/battle", "core/judgment", "core/intermission")
-    for root in 금지_영역:
-        if not Path(root).exists():
-            continue
-        hits = _속성_접근_파일들(root, "gender")
-        assert not hits, f"{root} 가 gender 를 읽는다: {hits}"
-    if Path("core/agents").exists():
-        agents_hits = _속성_접근_파일들("core/agents", "gender")
-        허용 = {"core/agents/narration.py"}
-        assert agents_hits <= 허용, f"narration 밖에서 gender 를 읽는다: {agents_hits}"
+    허용 = {"core/agents/narration.py"}
+    hits = _속성_접근_파일들("core", "gender")
+    assert hits <= 허용, f"서사 표기 밖에서 gender 를 읽는다: {hits - 허용}"
 
 
 def test_행운은_판단에_개입하지_않는다():
     """기획서 §4.2 — 행운은 굴림에만. core/judgment 는 luck 을 읽지 않는다."""
-    if not Path("core/judgment").exists():
-        return
-    hits = _속성_접근_파일들("core/judgment", "luck")
-    assert not hits, f"core/judgment 가 luck 을 읽는다: {hits}"
+    # 굴림에만 쓴다 — 판단 층(judgment)도, 프롬프트 조립(agents)도 읽지 않는다.
+    # 콘텐츠의 빌드 선택도 판단이므로 함께 막는다(QA 라운드 1 P1-6).
+    허용 = {"core/rules/combat.py"}
+    hits = _속성_접근_파일들("core", "luck") | _속성_접근_파일들("content", "luck")
+    assert hits <= 허용, f"굴림 밖에서 luck 을 읽는다: {hits - 허용}"

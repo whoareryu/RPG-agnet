@@ -6,7 +6,11 @@
 
 from dataclasses import dataclass, field
 
-from core.rules.constants import ODDS_COLLAPSE_STEP, REPLAN_MAX_CONSECUTIVE
+from core.rules.constants import (
+    ODDS_COLLAPSE_STEP,
+    REPLAN_DEVIATION_COOLDOWN,
+    REPLAN_MAX_CONSECUTIVE,
+)
 from core.types import Plan
 
 
@@ -21,6 +25,8 @@ class ReplanState:
     """러너가 판 하나 동안 들고 다니는 상태. 순수 함수가 읽고 갱신한다."""
 
     collapse_level: float | None = None  # 마지막으로 트리거를 낸 승산 계단
+    turn: int = 0
+    last_deviation_replan: int = -99
     consecutive: int = 0
     total: int = 0
     triggered_this_turn: bool = False
@@ -28,8 +34,19 @@ class ReplanState:
     adaptations: list[str] = field(default_factory=list)
     environment_changes: list[str] = field(default_factory=list)
 
-    def new_turn(self) -> None:
+    def begin_turn(self, turn: int = 0) -> None:
+        """턴 시작. 한 턴 1회 제한만 푼다.
+
+        이탈·적응 신호는 여기서 지우지 않는다 — 그것들은 **직전 턴 안에서** 쌓이고
+        이번 턴 시작에 읽혀야 한다. 예전에는 여기서 함께 비웠고, 그래서 기획서
+        §8.3 의 트리거 4종 중 이탈·적응 두 종이 한 번도 발동하지 않았다
+        (160판 계측: replan_trigger 가 전부 odds_collapse).
+        """
         self.triggered_this_turn = False
+        self.turn = turn
+
+    def consume_signals(self) -> None:
+        """트리거 판정이 끝났다. 읽은 신호를 비운다 — 다음 턴이 새로 쌓는다."""
         self.deviations.clear()
         self.adaptations.clear()
         self.environment_changes.clear()
@@ -40,7 +57,8 @@ def replan_triggers(state: ReplanState, odds_value: float, plan: Plan | None) ->
     if plan is None or state.triggered_this_turn:
         return []
     out: list[Trigger] = []
-    for who in state.deviations:
+    if state.deviations and state.turn - state.last_deviation_replan >= REPLAN_DEVIATION_COOLDOWN:
+        who = ", ".join(dict.fromkeys(state.deviations))
         out.append(Trigger("deviation", f"{who} 가 방침을 이탈했다"))
     if odds_value <= plan.retreat_threshold:
         # 첫 진입은 1회, 이후 0.1 씩 더 내려갈 때마다.
@@ -62,9 +80,13 @@ def _floor_step(v: float) -> float:
     return round((v // ODDS_COLLAPSE_STEP) * ODDS_COLLAPSE_STEP, 2)
 
 
-def mark_replanned(state: ReplanState, odds_value: float, plan: Plan | None) -> bool:
+def mark_replanned(
+    state: ReplanState, odds_value: float, plan: Plan | None, triggers: list[Trigger] | None = None
+) -> bool:
     """재계획을 실행했다고 기록한다. 강제 결정(연속 상한 초과)이면 True."""
     state.triggered_this_turn = True
+    if any(t.kind == "deviation" for t in triggers or ()):
+        state.last_deviation_replan = state.turn
     state.total += 1
     state.consecutive += 1
     if plan is not None and odds_value <= plan.retreat_threshold:

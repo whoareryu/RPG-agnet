@@ -76,6 +76,21 @@ def _jsonable(o: Any) -> Any:
     return str(o)
 
 
+# 결정론 비교에서 빼는 필드. 측정한 시각과 걸린 시간은 매번 다르고, 판단이 아니다.
+NON_DETERMINISTIC = ("ts", "timing")
+
+
+def judgment_view(e: "TraceEvent") -> dict[str, Any]:
+    """ "같은 시드 = 같은 판" 을 비교하는 정본(설계 §3.4).
+
+    테스트마다 각자 필드를 빼면 결정론의 정의가 갈라진다 — 실제로 갈라져 있었고
+    한쪽은 항상 빨갛고 한쪽은 통과했다(QA 라운드 1 P0-2). 여기 하나만 쓴다.
+    """
+    d = {k: v for k, v in asdict(e).items() if k not in NON_DETERMINISTIC}
+    d["payload"] = {k: v for k, v in d["payload"].items() if k not in NON_DETERMINISTIC}
+    return d
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
 

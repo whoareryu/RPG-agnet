@@ -72,7 +72,10 @@ def make_plan(
 ) -> Plan:
     odds_value, odds_bd = odds(battle, faction)
     previous = battle.plans.get(faction)
-    prompt = build_orchestrator_prompt(battle, faction, odds_value, reason, forced, previous)
+    prompt = build_orchestrator_prompt(
+        battle, faction, odds_value, reason, forced, previous, battle.last_plan_odds
+    )
+    battle.last_plan_odds = odds_value
     data = model.decide("orchestrator", prompt, ORCHESTRATOR_SCHEMA)
     plan, notes = plan_from(data, battle, faction)
     battle.plans[faction] = plan
@@ -92,8 +95,9 @@ def make_plan(
             "plan": plan,
             "notes": notes,
             "model": data.get("_meta", {}),
+            "timing": data.get("_timing", {}),
             "prompt": prompt,
-            "raw": {k: v for k, v in data.items() if k != "_meta"},
+            "raw": {k: v for k, v in data.items() if not k.startswith("_")},
         },
     )
     return plan

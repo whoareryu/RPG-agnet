@@ -20,6 +20,11 @@ def allocate(base: Stats, points: dict[str, int]) -> Stats:
     for name, p in points.items():
         if name not in STAT_NAMES:
             raise ValueError(f"모르는 능력치: {name}")
+        # bool 은 int 의 하위 타입이라 True 가 1점으로 들어간다. 실수는 능력치를
+        # 10.5 로 만들고 그 값이 HP 로 흘러 트레이스에 실린다(QA 라운드 1 P1-5).
+        # 문자열·None 은 비교에서 TypeError 가 나 API 가 500 을 낸다 — 여기서 잡는다.
+        if isinstance(p, bool) or not isinstance(p, int):
+            raise ValueError(f"{STAT_LABELS[name]} 포인트는 정수여야 한다: {p!r}")
         if p < 0:
             raise ValueError(f"{STAT_LABELS[name]} 에 음수 포인트({p})를 줄 수 없다")
     total = sum(points.values())

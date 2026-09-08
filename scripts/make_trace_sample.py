@@ -24,10 +24,11 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "trace-samples" / "one-r
 
 
 def main() -> None:
-    # 시드 8 · 가렛/일레인/카일: 24턴 동안 이탈 9회 · 보스 적응 · 재계획 · 포기가 전부 나온다.
-    # 데모 시나리오(기획서 §11.3)의 하이라이트가 한 판에 들어 있다.
+    # 시드 3 · 가렛/일레인/카일: 22턴 동안 이탈 11회 · 보스 적응 · 재계획 · 포기가
+    # 전부 나오고, **카일이 딸을 이유로 전장을 벗어나는 장면**이 들어 있다.
+    # 데모 시나리오(기획서 §11.3)와 진입 화면 3장면 카드의 재료가 이 한 판에 있다.
     cfg = RunConfig(
-        seed=8,
+        seed=3,
         lineup=("garret", "elaine", "kyle"),
         allocations={},
         classes={},

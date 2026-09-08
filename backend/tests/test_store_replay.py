@@ -1,4 +1,3 @@
-from dataclasses import asdict
 from pathlib import Path
 
 from adapters.harness.harness import Harness
@@ -10,7 +9,7 @@ from content.missions import MISSIONS_A
 from content.party import build_party
 from core.rules.dice import SeededDice
 from core.runner import run
-from core.trace.schema import KINDS, from_json
+from core.trace.schema import KINDS, from_json, judgment_view
 from core.types import RunConfig
 
 SAMPLE = Path(__file__).resolve().parent.parent.parent / "docs" / "trace-samples" / "one-run.jsonl"
@@ -35,10 +34,16 @@ def _run(cfg, model_factory=lambda: Harness(FakeModel(), FakeModel())):
 
 
 def _strip(events):
-    """ts 와 모델 메타(이름·지연)를 뺀다 — 판단 내용이 같은지를 본다."""
+    return [judgment_view(e) for e in events]
+
+
+def _strip_model(events):
+    """판단 내용만 본다 — 누가 답했는지(fake vs replay)는 뺀다.
+
+    결정론 비교(_strip)와 다른 질문이다: "리플레이가 같은 판단을 냈는가".
+    """
     out = []
-    for e in events:
-        d = {k: v for k, v in asdict(e).items() if k != "ts"}
+    for d in _strip(events):
         d["payload"] = {k: v for k, v in d["payload"].items() if k != "model"}
         out.append(d)
     return out
@@ -83,7 +88,7 @@ def test_리플레이는_모델_호출_없이_같은_판을_재생한다():
 
     replay = ReplayModel(original.events, fallback=부르면안됨())
     again = _run(_cfg(), model_factory=lambda: Harness(replay, 부르면안됨()))
-    assert _strip(again.events) == _strip(original.events)
+    assert _strip_model(again.events) == _strip_model(original.events)
     assert replay.exhausted == 0
 
 

@@ -43,14 +43,22 @@ def detect_adaptation(battle: Battle, boss_id: str) -> tuple[str | None, dict[st
         return None, {}
     already = {p for t, p in battle.boss_adaptations if t > window_start}
 
-    # ① 같은 아군이 3턴 연속 보스를 공격
+    # ① 같은 아군이 3턴 연속 보스를 공격.
+    #
+    # 후보를 set 으로 돌면 파이썬 문자열 해시 순서가 PYTHONHASHSEED 에 따라 달라져
+    # 같은 시드가 프로세스마다 다른 판을 만든다(160판 중 6판이 승패까지 갈렸다).
+    # 등장 순서(dict.fromkeys)로 돌고, 동률이면 먼저 친 쪽을 고른다.
     if "repeat_attacker" not in already:
-        for actor in {h.actor for h in recent}:
+        for actor in dict.fromkeys(h.actor for h in recent):
             hits = {
                 h.turn for h in recent if h.actor == actor and h.target == boss_id and h.damage > 0
             }
             if len(hits) >= ADAPT_WINDOW:
-                return "repeat_attacker", {"actor": actor, "turns": sorted(hits)}
+                return "repeat_attacker", {
+                    "actor": actor,
+                    "turns": sorted(hits),
+                    "tie_rule": "먼저 공격을 시작한 쪽",
+                }
     # ② 피해의 60% 이상이 마법
     total = sum(h.damage for h in recent)
     magic = sum(h.damage for h in recent if h.damage_kind == "magic")
@@ -67,19 +75,49 @@ def detect_adaptation(battle: Battle, boss_id: str) -> tuple[str | None, dict[st
     return None, {}
 
 
-def apply_adaptation(battle: Battle, boss_id: str, pattern: str, evidence: dict[str, Any]) -> str:
+def apply_adaptation(
+    battle: Battle, boss_id: str, pattern: str, evidence: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """(대응 이름, 실제로 바뀐 것). 바뀐 게 없으면 effect 가 그것을 말한다.
+
+    변화를 기록하는 이유: 인스펙터가 "보스가 치유자를 노리기로 했다" 를 세 번
+    보여주는데 상태가 한 번도 안 바뀌면 로그가 거짓말한다(QA 라운드 1 P1-9).
+    """
     counter = PATTERN_TO_COUNTER[pattern]
     boss = battle.units[boss_id]
-    if counter == "focus":
-        battle.boss_focus = evidence["actor"]
+    effect: dict[str, Any] = {}
+    if counter in ("focus", "target_healer"):
+        before = battle.boss_focus
+        after = evidence["actor"] if counter == "focus" else evidence["healer"]
+        battle.boss_focus = after
+        effect = {"field": "boss_focus", "before": before, "after": after}
     elif counter == "ward":
-        boss.statuses.append(Status("ward", ADAPT_WARD_TURNS, ADAPT_WARD_MAGIC_RESIST))
-    elif counter == "target_healer":
-        battle.boss_focus = evidence["healer"]
+        existing = boss.status("ward")
+        effect = {
+            "field": "ward",
+            "before": existing.value if existing else 0,
+            "after": ADAPT_WARD_MAGIC_RESIST,
+            "turns": ADAPT_WARD_TURNS,
+        }
+        if existing:
+            existing.turns = max(existing.turns, ADAPT_WARD_TURNS)
+        else:
+            boss.statuses.append(Status("ward", ADAPT_WARD_TURNS, ADAPT_WARD_MAGIC_RESIST))
     elif counter == "summon_faster":
-        battle.summon_every = max(1, battle.summon_every - 1)
+        before = battle.summon_every
+        # 바닥을 2 로 둔다. 설계 §5.6 은 "3→2턴" 이고, 창이 지날 때마다 다시
+        # 발동해 1턴까지 내려가면 소환이 매 턴이 된다.
+        battle.summon_every = max(2, before - 1)
+        effect = {
+            "field": "summon_every",
+            "before": before,
+            "after": battle.summon_every,
+            "summoned": battle.summoned,
+            "summon_max": battle.enemy_def.summon_max if battle.enemy_def else 0,
+        }
+    effect["no_change"] = effect.get("before") == effect.get("after")
     battle.boss_adaptations.append((battle.turn, pattern))
-    return counter
+    return counter, effect
 
 
 def boss_act(
@@ -92,10 +130,16 @@ def boss_act(
     if battle.adaptation_on:
         pattern, evidence = detect_adaptation(battle, boss_id)
         if pattern:
-            counter = apply_adaptation(battle, boss_id, pattern, evidence)
+            counter, effect = apply_adaptation(battle, boss_id, pattern, evidence)
             tracer.emit(
                 "boss_adapt",
-                {"pattern": pattern, "counter": counter, "evidence": evidence},
+                {
+                    "pattern": pattern,
+                    "counter": counter,
+                    "evidence": evidence,
+                    "effect": effect,
+                    "turn_window": [battle.turn - ADAPT_WINDOW, battle.turn - 1],
+                },
                 actor=boss_id,
             )
     focus = battle.boss_focus
@@ -123,8 +167,9 @@ def boss_act(
             "note": note,
             "adapt": adapt,
             "model": data.get("_meta", {}),
+            "timing": data.get("_timing", {}),
             "prompt": prompt,
-            "raw": {k: v for k, v in data.items() if k != "_meta"},
+            "raw": {k: v for k, v in data.items() if not k.startswith("_")},
         },
         actor=boss_id,
     )

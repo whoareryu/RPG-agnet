@@ -181,9 +181,11 @@ def test_승산_붕괴는_첫_진입과_계단마다_한_번씩():
     s = ReplanState()
     assert [t.kind for t in replan_triggers(s, 0.28, PLAN)] == ["odds_collapse"]
     mark_replanned(s, 0.28, PLAN)
-    s.new_turn()
+    s.begin_turn()
+    s.consume_signals()
     assert replan_triggers(s, 0.25, PLAN) == []  # 같은 계단(0.2)
-    s.new_turn()
+    s.begin_turn()
+    s.consume_signals()
     assert [t.kind for t in replan_triggers(s, 0.19, PLAN)] == ["odds_collapse"]  # 0.1 계단
 
 

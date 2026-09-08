@@ -32,3 +32,12 @@ def test_파생치():
     s = base_stats().with_added(con=4)  # CON 12
     assert hp_max(s) == 40 + 12 * 6
     assert stamina_max(s) == 20 + 12 * 2
+
+
+def test_실수와_bool_포인트는_거부한다():
+    """QA 라운드 1 P1-5 — 2.5 가 통과해 능력치가 10.5 가 됐고 그 값이 HP 로 흘렀다."""
+    import pytest
+
+    for bad in ({"str_": 2.5}, {"str_": True}, {"str_": "5"}, {"str_": None}):
+        with pytest.raises(ValueError, match="정수"):
+            allocate(base_stats(), bad)

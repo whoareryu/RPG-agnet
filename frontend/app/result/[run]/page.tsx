@@ -1,0 +1,113 @@
+import Link from "next/link";
+import BackendDown from "@/components/BackendDown";
+import { backendFetch, BackendDown as BackendDownError } from "@/lib/backend";
+import { buildNameMap, OUTCOME_KO, type MissionResult, type TraceEvent } from "@/lib/trace";
+
+export const dynamic = "force-dynamic";
+
+export default async function ResultPage({ params }: { params: Promise<{ run: string }> }) {
+  const { run } = await params;
+  let events: TraceEvent[];
+  try {
+    const r = await backendFetch(`/runs/${encodeURIComponent(run)}`);
+    if (r.status === 404) return <NotFound run={run} />;
+    if (!r.ok) return <BackendDown detail={`GET /runs/${run} → ${r.status}`} />;
+    events = ((await r.json()) as { events: TraceEvent[] }).events;
+  } catch (e) {
+    return <BackendDown detail={e instanceof BackendDownError ? e.message : String(e)} />;
+  }
+  const names = buildNameMap(events);
+  const results = events.filter((e) => e.kind === "mission_end").map((e) => e.payload as unknown as MissionResult);
+  const runEnd = events.find((e) => e.kind === "run_end");
+  const abandons = events.filter((e) => e.kind === "abandon").length;
+  const deviations = events.filter((e) => e.kind === "compliance" && e.payload.verdict === "deviate").length;
+  const adapts = events.filter((e) => e.kind === "boss_adapt").length;
+  const plans = events.filter((e) => e.kind === "plan").length;
+  const fallbacks = events.filter((e) => e.kind === "decision" && (e.payload.model as { fallback?: boolean })?.fallback).length;
+
+  return (
+    <main className="page page-narrow stack" style={{ gap: 16 }}>
+      <div className="card-kicker">결산</div>
+      <h1>{results.map((r) => OUTCOME_KO[r.outcome]).join(" · ") || "진행 중"}</h1>
+      {results.map((r) => (
+        <div key={r.no} className="card" style={{ gap: 8 }}>
+          <div className="row">
+            <span className={`tag ${r.outcome === "win" ? "tag-ok" : r.outcome === "retreat" ? "tag-warn" : "tag-accent"}`}>{OUTCOME_KO[r.outcome]}</span>
+            <span className="small">{r.turns}턴</span>
+            {r.abandoned && <span className="tag tag-outline">단장이 포기를 결정</span>}
+          </div>
+          <table className="kv">
+            <tbody>
+              <tr>
+                <th>생존</th>
+                <td>{r.survivors.map((s) => names[s] ?? s).join(", ") || "없음"}</td>
+              </tr>
+              <tr>
+                <th>빠져나옴</th>
+                <td>{r.fled.map((s) => names[s] ?? s).join(", ") || "없음"}</td>
+              </tr>
+              <tr>
+                <th>쓰러짐</th>
+                <td>{r.dead.map((s) => names[s] ?? s).join(", ") || "없음"}</td>
+              </tr>
+              <tr>
+                <th>모델 호출</th>
+                <td>{r.calls_used} (상한 300)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ))}
+      <div className="card" style={{ gap: 6 }}>
+        <div className="card-kicker">이 판에서 일어난 판단</div>
+        <div className="row small">
+          <span className="tag">작전 수립 {plans}회</span>
+          <span className="tag">방침 이탈 {deviations}회</span>
+          <span className="tag">보스 적응 {adapts}회</span>
+          <span className="tag">포기 {abandons}회</span>
+          {fallbacks > 0 && <span className="tag tag-warn">폴백 {fallbacks}회</span>}
+        </div>
+        {runEnd && <p className="small faint">전체 모델 호출 {String(runEnd.payload.calls_used)}회</p>}
+      </div>
+      <div className="row">
+        <Link href={`/battle/${run}`} className="btn">
+          트레이스 다시 보기
+        </Link>
+        <ReplayButton run={run} />
+        <Link href="/roster" className="btn btn-primary">
+          다시 편성 →
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+function NotFound({ run }: { run: string }) {
+  return (
+    <main className="page page-narrow">
+      <div className="card">
+        <div className="card-title">그런 런이 없다</div>
+        <p className="small faint mono">{run}</p>
+        <Link href="/roster">로스터로</Link>
+      </div>
+    </main>
+  );
+}
+
+async function ReplayButton({ run }: { run: string }) {
+  async function replay() {
+    "use server";
+    const { redirect } = await import("next/navigation");
+    const r = await backendFetch(`/runs/${encodeURIComponent(run)}/replay`, { method: "POST" });
+    if (!r.ok) return;
+    const data = (await r.json()) as { run_id: string };
+    redirect(`/battle/${data.run_id}`);
+  }
+  return (
+    <form action={replay}>
+      <button className="btn" type="submit" title="녹화된 판단을 그대로 재생한다. 모델 호출 0.">
+        리플레이 (모델 호출 0)
+      </button>
+    </form>
+  );
+}

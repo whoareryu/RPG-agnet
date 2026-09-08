@@ -56,9 +56,14 @@ def test_프리셋_로스터_다섯(client):
     assert sum(kyle["recommended"].values()) == 18
 
 
-def test_출전_인원이_틀리면_422(client):
-    r = client.post("/runs", json={"lineup": ["garret", "elaine"], "seed": 1})
-    assert r.status_code == 422 and "3~3명" in r.json()["detail"]
+def test_출전_인원_상한을_넘으면_422(client):
+    r = client.post("/runs", json={"lineup": ["garret", "elaine", "kyle", "thomas"], "seed": 1})
+    assert r.status_code == 422 and "1~3명" in r.json()["detail"]
+
+
+def test_혼자_출전해도_받아준다(client):
+    """기획서 §8.1 — 게임은 막지 않는다. 결과가 따라올 뿐이다."""
+    assert client.post("/runs", json={"lineup": ["garret"], "seed": 1}).status_code == 200
 
 
 def test_포인트_초과는_422(client):

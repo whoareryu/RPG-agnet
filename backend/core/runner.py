@@ -67,9 +67,14 @@ class _Collect:
 
 
 def _default_positions(members: list[PartyMember]) -> dict[str, str]:
-    """감독 OFF 의 고정 편성(설계 §6.1): AGI 최고 1명 후열, 나머지 전열."""
+    """감독 OFF 의 고정 편성(설계 §6.1): AGI 최고 1명 후열, 나머지 전열.
+
+    혼자 나가면 뒤에 설 수 없다 — 앞을 막아 줄 사람이 없다.
+    """
     if not members:
         return {}
+    if len(members) == 1:
+        return {members[0][0].id: "front"}
     fastest = max(members, key=lambda m: m[0].stats.agi)[0].id
     return {m[0].id: ("back" if m[0].id == fastest else "front") for m in members}
 
@@ -156,7 +161,10 @@ def play_mission(
             "enemy": {
                 "name": mission.enemy.name,
                 "description": mission.enemy.description,
-                "units": [u.id for u in mission.enemy.units],
+                "units": [
+                    {"id": u.id, "name": u.name, "position": u.position, "is_boss": u.is_boss}
+                    for u in mission.enemy.units
+                ],
             },
             "environment": battle.environment,
             "party": [
@@ -193,7 +201,7 @@ def play_mission(
     while result is None:
         battle.turn += 1
         tracer.turn = battle.turn
-        replan.new_turn()
+        replan.begin_turn(battle.turn)
         _maybe_summon(battle, tracer)
 
         odds_value, odds_bd = odds(battle, battle.party)
@@ -211,7 +219,7 @@ def play_mission(
             if triggers:
                 for t in triggers:
                     tracer.emit("replan_trigger", {"trigger": t.kind, "detail": t.detail})
-                forced = mark_replanned(replan, odds_value, plan)
+                forced = mark_replanned(replan, odds_value, plan, triggers)
                 reason = "replan:" + "+".join(t.kind for t in triggers)
                 plan = make_plan(battle, battle.party, model, tracer, reason=reason, forced=forced)
                 plans += 1
@@ -220,6 +228,8 @@ def play_mission(
                     abandoned = True
             else:
                 mark_quiet_turn(replan)
+            # 읽었으니 비운다. 이번 턴이 새 신호를 쌓는다.
+            replan.consume_signals()
 
         order = turn_order(battle, dice)
         tracer.emit(
@@ -250,7 +260,7 @@ def play_mission(
 
         end_turn(battle)
         if result is None:
-            result = outcome(battle)
+            result = outcome(battle, end_of_turn=True)
 
     units = battle.units.values()
     party_units = [u for u in units if u.faction == battle.party]
@@ -305,8 +315,11 @@ def run(
             seed=config.seed,
         )
         record.results.append(res)
-        # 파티가 전멸하면 다음 판은 없다.
-        if not res.survivors:
+        # 죽은 사람은 다음 판에 나오지 않는다. 사망은 소멸이다(기획서 §6.6).
+        # 인터미션이 없어도 러너가 책임진다 — 예전에는 1판에서 죽은 단원이
+        # 2판에 만피로 서 있었다(QA 라운드 1 P0-5).
+        members = [m for m in members if m[0].id not in res.dead]
+        if not members:
             break
         if i < len(config.missions) - 1 and config.intermission and intermission is not None:
             members = intermission(members, model, dice, tracer, res)

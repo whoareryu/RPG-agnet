@@ -172,9 +172,12 @@ def choose_build(c: Character) -> BuildChoice:
             "키가 작아 장궁은 비효율. 단궁으로 빠르게 쏜다.",
         )
     if cls.key == "rogue":
-        w = WEAPONS["투척 나이프"] if s.luck >= 12 else WEAPONS["단검"]
+        # 행운으로 무기를 고르면 안 된다 — 투척은 원거리라 사거리·편성·거리
+        # 페널티가 함께 바뀌고, 그것이 곧 판단이다(기획서 §4.2 "행운은 판단에
+        # 개입하지 않는다"). 민첩으로 고른다.
+        w = WEAPONS["투척 나이프"] if s.agi >= 12 else WEAPONS["단검"]
         return BuildChoice(
-            w, ARMORS["가죽 갑옷"], skills, "가볍게 움직여야 한다. 운이 좋으면 투척, 아니면 단검."
+            w, ARMORS["가죽 갑옷"], skills, "가볍게 움직여야 한다. 손이 빠르면 투척, 아니면 단검."
         )
     # cleric
     w = WEAPONS["철퇴"] if s.str_ >= 10 else WEAPONS["성표"]

@@ -5,6 +5,7 @@ properties·minimum·maximum·items)만 안다. 그 밖의 키워드를 쓰면 �
 """
 
 from core.ports import JsonSchema
+from core.rules.constants import RETREAT_THRESHOLD_RANGE
 
 ACTION_KINDS = ["ATTACK", "DEFEND", "SKILL", "MOVE", "FLEE", "WAIT"]
 STRATEGIES = ["rush", "attrition", "defensive", "retreat"]
@@ -30,7 +31,11 @@ ORCHESTRATOR_SCHEMA: JsonSchema = {
         "formation": {"type": "object"},
         "focus_target": {"type": ["string", "null"]},
         "per_unit_directive": {"type": "object"},
-        "retreat_threshold": {"type": "number", "minimum": 0.15, "maximum": 0.45},
+        "retreat_threshold": {
+            "type": "number",
+            "minimum": RETREAT_THRESHOLD_RANGE[0],
+            "maximum": RETREAT_THRESHOLD_RANGE[1],
+        },
         "rationale": {"type": "string"},
     },
 }

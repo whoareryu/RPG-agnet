@@ -24,9 +24,11 @@ from adapters.llm.replay import ReplayModel
 from api.schemas import CreateRunRequest, CreateRunResponse, DirectivesRequest
 from api.security import 시크릿_검사
 from content.classes import CLASSES, choose_build
+from content.events import pool_for
 from content.missions import MISSIONS_A, MISSIONS_B
 from content.party import apply_direction, build_party
 from content.roster import PRESET_ALLOCATIONS, PRESET_ROSTER
+from core.intermission import IntermissionInput, IntermissionState, run_intermission
 from core.ports import DecisionModel, RunStore
 from core.rules.constants import FREE_POINTS, MAX_CALLS, STAT_BASE
 from core.rules.dice import SeededDice
@@ -50,19 +52,27 @@ class RunSession:
         self.queue: queue.Queue[Any] = queue.Queue()
         self.done = threading.Event()
         self.error: str | None = None
+        # 인터미션에서 유저 입력을 기다리는 자리. 화면이 응답하지 않아도 판은
+        # 이어져야 하므로 대기에 상한을 둔다(설계 §11.1).
         self.directives: queue.Queue[DirectivesRequest] = queue.Queue()
+        self.awaiting_input = threading.Event()
 
     def emit(self, event: TraceEvent) -> None:
         self.events.append(event)
         self.queue.put(event)
 
 
+# 인터미션에서 유저 지시를 기다리는 상한(초). 넘으면 기본값(전원 훈련·분배 없음)
+# 으로 간다 — 판이 멈춘 채로 남으면 스트림이 영원히 열려 있다.
+DIRECTIVE_TIMEOUT = 60.0
+
+
 def build_app(
     store: RunStore,
     model_factory: Callable[[], DecisionModel],
     model_name: str = "fake",
-    intermission_factory: Callable[[RunSession], Any] | None = None,
     experiments_dir: Path | None = None,
+    directive_timeout: float = DIRECTIVE_TIMEOUT,
 ) -> FastAPI:
     app = FastAPI(title="rpg-arena", docs_url=None, redoc_url=None, openapi_url=None)
     sessions: dict[str, RunSession] = {}
@@ -193,10 +203,13 @@ def build_app(
         return CreateRunResponse(run_id=new_id, seed=cfg.seed, model="replay")
 
     @app.post("/runs/{run_id}/directives", dependencies=guard)
-    def directives(run_id: str, req: DirectivesRequest) -> dict[str, str]:
+    def directives(run_id: str, req: DirectivesRequest) -> dict[str, Any]:
+        """인터미션 입력 — 육성 지시 + 성장 포인트 분배(기획서 §5·§5.1)."""
         session = sessions.get(run_id)
         if session is None:
             raise HTTPException(status_code=404, detail="진행 중인 런이 아니다")
+        if not session.awaiting_input.is_set():
+            raise HTTPException(status_code=409, detail="지금은 인터미션이 아니다")
         session.directives.put(req)
         return {"status": "accepted"}
 
@@ -240,7 +253,7 @@ def build_app(
     def _start(session: RunSession, members: Any, factory: Callable[[], DecisionModel]) -> None:
         def work() -> None:
             try:
-                intermission = intermission_factory(session) if intermission_factory else None
+                intermission = _intermission_for(session)
                 record = run(
                     session.run_id,
                     session.config,
@@ -264,6 +277,52 @@ def build_app(
                 threading.Timer(60.0, lambda: sessions.pop(session.run_id, None)).start()
 
         threading.Thread(target=work, name=f"run-{session.run_id}", daemon=True).start()
+
+    def _intermission_for(session: RunSession) -> Any:
+        """인터미션 훅. 유저 입력을 기다렸다가 core 의 인터미션을 돌린다."""
+        state = IntermissionState()
+
+        def hook(members, result, model, dice, tracer):  # type: ignore[no-untyped-def]
+            session.awaiting_input.set()
+            # 화면에게 "지금 입력받는다" 를 알린다. 이 이벤트가 없으면 스트림을
+            # 보는 쪽은 판이 멈춘 이유를 알 수 없다.
+            tracer.emit(
+                "intermission_start",
+                {
+                    "awaiting_input": True,
+                    "after_outcome": result.outcome,
+                    "party": [c.id for c, _, _ in members],
+                    "timeout_s": directive_timeout,
+                },
+            )
+            try:
+                req = session.directives.get(timeout=directive_timeout)
+                user = IntermissionInput(directives=dict(req.directives), growth=dict(req.growth))
+            except queue.Empty:
+                user = IntermissionInput()
+            finally:
+                session.awaiting_input.clear()
+            try:
+                return run_intermission(
+                    members, result.outcome, user, pool_for, model, dice, tracer, state
+                )
+            except ValueError as e:
+                # 유저 입력이 규칙을 어겼다(포인트 초과 등). 판을 죽이지 않고
+                # 기본값으로 간다 — 그 사실을 트레이스에 남긴다.
+                logger.warning("인터미션 입력 거부 %s: %s", session.run_id, e)
+                tracer.emit("intermission_start", {"rejected": str(e), "fallback": True})
+                return run_intermission(
+                    members,
+                    result.outcome,
+                    IntermissionInput(),
+                    pool_for,
+                    model,
+                    dice,
+                    tracer,
+                    state,
+                )
+
+        return hook
 
     return app
 

@@ -281,8 +281,10 @@ def play_mission(
 
 ModelFactory = Callable[[], DecisionModel]
 DiceFactory = Callable[[int], Dice]
+# (멤버, 직전 결과, 모델, 주사위, tracer) → 다음 판에 나갈 멤버.
+# core 는 인터미션의 내용을 모른다 — 호출자가 content 와 유저 입력을 묶어 준다.
 IntermissionFn = Callable[
-    [list[PartyMember], DecisionModel, Dice, Tracer, MissionResult], list[PartyMember]
+    [list[PartyMember], MissionResult, DecisionModel, Dice, Tracer], list[PartyMember]
 ]
 
 
@@ -322,7 +324,9 @@ def run(
         if not members:
             break
         if i < len(config.missions) - 1 and config.intermission and intermission is not None:
-            members = intermission(members, model, dice, tracer, res)
+            tracer.mission = mission.no
+            tracer.turn = 0
+            members = intermission(members, res, model, dice, tracer)
     tracer.mission = 0
     tracer.turn = 0
     tracer.emit(

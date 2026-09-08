@@ -154,3 +154,88 @@ def test_실험_결과가_있으면_그대로_내려준다(tmp_path):
     c = TestClient(app)
     assert c.get("/experiments").json()["available"] == ["e1"]
     assert c.get("/experiments/e1").json()["experiment"] == "e1"
+
+
+# ─── B단계 인터미션 ────────────────────────────────────────────────────
+
+
+def _two_mission_client(tmp_path, timeout=5.0):
+    app = build_app(
+        store=JsonlRunStore(tmp_path),
+        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        directive_timeout=timeout,
+    )
+    return TestClient(app)
+
+
+def test_두_판이면_인터미션에서_입력을_기다린다(tmp_path):
+    """기획서 §7.1 — 1판 → 인터미션 → 2판. 인터미션이 있어야 인과가 닫힌다."""
+    c = _two_mission_client(tmp_path)
+    run_id = c.post(
+        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+    ).json()["run_id"]
+
+    # 인터미션에 닿을 때까지 기다렸다가 지시를 보낸다.
+    t0 = time.time()
+    while time.time() - t0 < 10:
+        events = c.get(f"/runs/{run_id}").json()["events"]
+        if any(e["kind"] == "intermission_start" for e in events):
+            break
+        time.sleep(0.05)
+    r = c.post(
+        f"/runs/{run_id}/directives",
+        json={"directives": {"kyle": "rest", "garret": "train"}, "growth": {"kyle": {"agi": 3}}},
+    )
+    assert r.status_code == 200
+
+    body = _wait_done(c, run_id)
+    kinds = [e["kind"] for e in body["events"]]
+    assert kinds.count("mission_start") == 2, "2판이 시작되지 않았다"
+    assert "train_result" in kinds and "growth_points" in kinds
+    지시 = [e["payload"]["category"] for e in body["events"] if e["kind"] == "directive"]
+    assert "rest" in 지시
+
+
+def test_인터미션이_아닐_때의_지시는_409(tmp_path):
+    c = _two_mission_client(tmp_path)
+    run_id = c.post("/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 8}).json()[
+        "run_id"
+    ]
+    r = c.post(f"/runs/{run_id}/directives", json={"directives": {}})
+    assert r.status_code in (409, 404)
+
+
+def test_응답이_없어도_기본값으로_판이_이어진다(tmp_path):
+    """화면이 죽어도 스트림이 영원히 열려 있으면 안 된다."""
+    c = _two_mission_client(tmp_path, timeout=0.3)
+    run_id = c.post(
+        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+    ).json()["run_id"]
+    body = _wait_done(c, run_id, timeout=20)
+    kinds = [e["kind"] for e in body["events"]]
+    assert kinds.count("mission_start") == 2
+    지시 = {e["payload"]["category"] for e in body["events"] if e["kind"] == "directive"}
+    assert 지시 == {"train"}, "기본값은 전원 훈련이어야 한다"
+
+
+def test_잘못된_성장_분배는_판을_죽이지_않는다(tmp_path):
+    c = _two_mission_client(tmp_path)
+    run_id = c.post(
+        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+    ).json()["run_id"]
+    t0 = time.time()
+    while time.time() - t0 < 10:
+        if any(
+            e["kind"] == "intermission_start" for e in c.get(f"/runs/{run_id}").json()["events"]
+        ):
+            break
+        time.sleep(0.05)
+    c.post(f"/runs/{run_id}/directives", json={"growth": {"kyle": {"agi": 99}}})
+    body = _wait_done(c, run_id, timeout=20)
+    assert body["error"] is None
+    rejected = [
+        e
+        for e in body["events"]
+        if e["kind"] == "intermission_start" and e["payload"].get("rejected")
+    ]
+    assert rejected and "찍으려 한다" in rejected[0]["payload"]["rejected"]

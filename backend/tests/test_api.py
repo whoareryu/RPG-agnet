@@ -134,5 +134,23 @@ def test_시크릿이_설정되면_헤더_없이는_401(tmp_path, monkeypatch):
     assert c.get("/healthz").status_code == 200  # healthz 는 열려 있다
 
 
-def test_E1_결과가_없으면_404(client):
+def test_실험_결과가_없으면_404_이고_목록은_빈다(client):
     assert client.get("/experiments/e1").status_code == 404
+    assert client.get("/experiments").json()["available"] == []
+    assert client.get("/experiments/e9").status_code == 404
+
+
+def test_실험_결과가_있으면_그대로_내려준다(tmp_path):
+    import json as _json
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "e1.json").write_text(_json.dumps({"experiment": "e1", "compositions": []}), "utf-8")
+    app = build_app(
+        store=JsonlRunStore(tmp_path),
+        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        experiments_dir=out,
+    )
+    c = TestClient(app)
+    assert c.get("/experiments").json()["available"] == ["e1"]
+    assert c.get("/experiments/e1").json()["experiment"] == "e1"

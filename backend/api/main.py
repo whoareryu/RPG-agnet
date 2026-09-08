@@ -62,7 +62,7 @@ def build_app(
     model_factory: Callable[[], DecisionModel],
     model_name: str = "fake",
     intermission_factory: Callable[[RunSession], Any] | None = None,
-    e1_path: Path | None = None,
+    experiments_dir: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="rpg-arena", docs_url=None, redoc_url=None, openapi_url=None)
     sessions: dict[str, RunSession] = {}
@@ -204,13 +204,27 @@ def build_app(
     def recent(limit: int = 20) -> dict[str, Any]:
         return {"runs": store.list_recent(min(limit, 50))}
 
-    @app.get("/experiments/e1", dependencies=guard)
-    def e1() -> dict[str, Any]:
-        if e1_path is None or not e1_path.exists():
+    @app.get("/experiments", dependencies=guard)
+    def experiments() -> dict[str, Any]:
+        """돌아 있는 실험 목록. 화면이 무엇을 그릴 수 있는지 먼저 묻는다."""
+        if experiments_dir is None or not experiments_dir.exists():
+            return {"available": []}
+        return {"available": sorted(p.stem for p in experiments_dir.glob("*.json"))}
+
+    @app.get("/experiments/{name}", dependencies=guard)
+    def experiment(name: str) -> dict[str, Any]:
+        if name not in ("e1", "e2", "e3", "e4"):
+            raise HTTPException(status_code=404, detail=f"모르는 실험: {name}")
+        # experiments_dir 가 없으면 "실험 결과가 없다" 다. 상대 경로로 기본값을 두면
+        # 테스트가 프로세스의 작업 디렉토리에 따라 결과를 주웠다 놓쳤다 한다.
+        path = (experiments_dir / f"{name}.json") if experiments_dir else None
+        if path is None or not path.exists():
             raise HTTPException(
-                status_code=404, detail="E1 결과가 아직 없다. eval.run --experiment e1 을 돌린다"
+                status_code=404,
+                detail=f"{name.upper()} 결과가 아직 없다. "
+                f"backend 에서 `uv run python -m eval.run -e {name}` 을 돌린다",
             )
-        return json.loads(e1_path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
 
     # ─── 내부 ──────────────────────────────────────────────────────────
 
@@ -339,10 +353,9 @@ def create_app() -> FastAPI:
     from adapters.store.jsonl import JsonlRunStore
 
     runs_dir = Path(os.environ.get("RPG_RUNS_DIR", "runs"))
-    e1 = Path(os.environ.get("RPG_E1_PATH", "eval/out/e1.json"))
     return build_app(
         store=JsonlRunStore(runs_dir),
         model_factory=build_harness,
         model_name=model_name_from_env(),
-        e1_path=e1,
+        experiments_dir=Path(os.environ.get("RPG_EXPERIMENTS_DIR", "eval/out")),
     )

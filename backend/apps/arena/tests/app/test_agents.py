@@ -132,11 +132,9 @@ def test_Fake_단원은_방침의_집중_목표를_친다():
 # ─── 보스 ─────────────────────────────────────────────────────────────
 
 
-def _history(b, actor, turns, target="vargas", kind="physical", dmg=10, action="ATTACK", healed=0):
+def _history(b, actor, turns, target="vargas", dmg=10, action="ATTACK", healed=0, faction="party"):
     for t in turns:
-        b.history.append(
-            ActionRecord(t, actor, "party", action, target, kind if dmg else None, dmg, healed)
-        )
+        b.history.append(ActionRecord(t, actor, faction, action, target, dmg, healed))
 
 
 def test_같은_아군이_3턴_연속_공격하면_집중_타격_적응():
@@ -148,15 +146,22 @@ def test_같은_아군이_3턴_연속_공격하면_집중_타격_적응():
     assert pattern == "repeat_attacker" and ev["actor"] == "garret"
 
 
-def test_마법_위주면_결계_적응():
-    b = _battle()
+def test_공격이_전열에_막히면_전열_붕괴_적응():
+    """기획서 v3 §8.4 — 근접은 전열이 살아 있는 한 후열에 닿지 않는다.
+
+    보스가 때린 것이 전부 앞줄이면, 뒤를 치려면 앞을 부수는 수밖에 없다.
+    파티 행동이 아니라 **보스 자신의 타격**을 본다.
+    """
+    b = _battle(party=("bern", "garret", "kyle"))
     b.turn = 4
-    _history(b, "bern", [1, 2], kind="magic", dmg=30, action="SKILL:화염구")
-    _history(b, "garret", [3], dmg=5)
+    for u in b.units.values():
+        if u.faction == "party":
+            u.position = "front" if u.id == "bern" else "back"
+    # 보스가 3턴 내내 전열의 베른만 때렸다.
+    _history(b, "vargas", [1, 2, 3], target="bern", dmg=20, faction="enemy")
     _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
-    pattern, _ = detect_adaptation(b, "vargas")
-    # 가렛은 1턴만 쳤으니 repeat 아님. magic 60/65 ≥ 0.6.
-    assert pattern == "magic_heavy"
+    pattern, ev = detect_adaptation(b, "vargas")
+    assert pattern == "frontline_wall" and ev["blocker"] == "bern"
 
 
 def test_치유_2회면_치유자_타격_적응():

@@ -98,7 +98,7 @@ def build_orchestrator_prompt(
         "빼려면 온전할 때 빼야 값이 싸다.",
         f"환경: {env.name} — {env.description}",
         f"환경 수치: 중갑 속도 페널티 {env.speed_penalty_by_weight}, "
-        f"스태미나 배수 {env.stamina_multiplier}, 피해 배수 {env.damage_modifiers}, "
+        f"스태미나 배수 {env.stamina_multiplier}, "
         f"후열 거리 페널티 {env.range_penalty}%, 어둠 {env.darkness}",
         f"현재 승산(코드 계산): {odds_value:.2f}",
         f"재계획 사유: {reason}",
@@ -309,7 +309,7 @@ def build_boss_prompt(
     lines.append("가능한 행동: " + ", ".join(_action_text(a) for a in actions))
     lines.append(
         "JSON 으로만 답하라: action, target, skill, "
-        "adapt(focus|ward|target_healer|summon_faster|null), reason"
+        "adapt(focus|breach|target_healer|summon_faster|null), reason"
     )
     ctx = {
         "role": "boss",

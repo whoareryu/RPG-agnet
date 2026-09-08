@@ -38,7 +38,6 @@ CRIT_MULT = 1.5
 LUCK_ROLL_BONUS = 0.5  # (LCK - 10) × 0.5 %. 굴림에만 — 판단에는 개입 금지
 LUCK_NEUTRAL = 10
 STR_DAMAGE_COEF = 0.8
-INT_DAMAGE_COEF = 1.0
 ARMOR_SCALE = 100  # 방어 감쇄 = 100 / (100 + 방어력)
 DEFEND_MULT = 0.5
 FLEE_BASE = 50
@@ -99,11 +98,9 @@ DARKNESS_TIER_PENALTY = 1
 
 # ─── 보스 적응 (설계 §5.6) ────────────────────────────────────────────
 ADAPT_WINDOW = 3  # 최근 3턴 관측
-ADAPT_MAGIC_RATIO = 0.6
+ADAPT_FRONTLINE_RATIO = 0.6  # 보스 피해의 60% 이상이 전열에 막히면 전열을 부순다
 ADAPT_HEAL_COUNT = 2
 ADAPT_DEFEND_RATIO = 0.5
-ADAPT_WARD_MAGIC_RESIST = 0.30
-ADAPT_WARD_TURNS = 2
 
 # ─── 하네스 ──────────────────────────────────────────────────────────
 MAX_CALLS = 300

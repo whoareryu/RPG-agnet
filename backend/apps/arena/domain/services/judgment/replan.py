@@ -54,7 +54,7 @@ class ReplanState:
 
 ADAPT_KO = {
     "repeat_attacker": "같은 자의 반복 공격",
-    "magic_heavy": "마법 편중",
+    "frontline_wall": "전열이 막고 있는 것",
     "healing": "반복된 치유",
     "turtle": "방어 일변도",
 }

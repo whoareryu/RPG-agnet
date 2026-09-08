@@ -2,13 +2,9 @@ from apps.arena.domain.entities.types import Body, Equipment
 from apps.arena.domain.services.rules.equipment import efficiency
 from apps.arena.domain.services.rules.stats import base_stats
 
-판금 = Equipment(
-    "판금 갑옷", weight_class=3, min_height=0, min_str=11, base_damage=0, kind="physical", armor=30
-)
-장궁 = Equipment(
-    "장궁", weight_class=2, min_height=170, min_str=8, base_damage=9, kind="physical", is_long=True
-)
-단검 = Equipment("단검", weight_class=1, min_height=0, min_str=4, base_damage=5, kind="physical")
+판금 = Equipment("판금 갑옷", weight_class=3, min_height=0, min_str=11, base_damage=0, armor=30)
+장궁 = Equipment("장궁", weight_class=2, min_height=170, min_str=8, base_damage=9, is_long=True)
+단검 = Equipment("단검", weight_class=1, min_height=0, min_str=4, base_damage=5)
 
 
 def test_마른_몸에_판금은_명중과_속도_페널티():

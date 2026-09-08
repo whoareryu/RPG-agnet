@@ -51,7 +51,7 @@ COMPOSITIONS: tuple[Composition, ...] = (
     ),
     Composition("balanced", "균등", ("garret", "elaine", "bern"), {}),
     Composition(
-        # "마법사 몰빵" 을 대체한다(설계 2026-09-08). 전원이 방어형이라 적을
+        # 옛 "마도 편중" 조합을 대체한다(설계 2026-09-08). 전원이 방어형이라 적을
         # 못 죽인다 — "이길 수 없는 조합에서 단장이 무엇을 하는가" 가 더 선명하다.
         "defenders",
         "방패병 몰빵",

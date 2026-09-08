@@ -132,7 +132,6 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
 
     skill = actor.has_skill(action.skill or "") if action.kind == "SKILL" else None
     kind = action.kind
-    damage_kind: str | None = None
     healed = 0
 
     if kind == "ATTACK":
@@ -141,7 +140,6 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
             rec.notes.append(note)
         rec.target = tid
         rec.strikes.append(_strike(battle, actor, battle.units[tid], dice, None))
-        damage_kind = actor.weapon.kind
 
     elif kind == "DEFEND":
         actor.defending = True
@@ -150,7 +148,6 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
     elif kind == "SKILL":
         if skill is None:
             raise ValueError(f"{actor.name} 에게 스킬 {action.skill} 이 없다")
-        damage_kind = skill.kind
         if skill.effect in ("damage", "snipe", "crit", "double"):
             if skill.target == "all_enemies":
                 for f in list(enemies_of(battle, actor_id)):
@@ -217,7 +214,6 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
             faction=actor.faction,
             action=action.label(),
             target=rec.target,
-            damage_kind=damage_kind,
             damage=rec.total_damage,
             healed=healed,
         )

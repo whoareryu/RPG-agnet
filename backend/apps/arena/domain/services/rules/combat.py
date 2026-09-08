@@ -15,7 +15,6 @@ from apps.arena.domain.constants.balance import (
     HIT_MAX,
     HIT_MIN,
     HIT_PER_AGI_DIFF,
-    INT_DAMAGE_COEF,
     LUCK_NEUTRAL,
     LUCK_ROLL_BONUS,
     STR_DAMAGE_COEF,
@@ -67,7 +66,7 @@ def hit_chance(
             bd.append((f"{label} 효율", m.hit))
             v += m.hit
     if attacker.position == "back":
-        ranged = attacker.weapon.ranged or (skill is not None and skill.kind == "magic")
+        ranged = attacker.weapon.ranged or (skill is not None and skill.effect == "snipe")
         if ranged:
             # 환경의 거리 페널티는 **원거리에만** 붙는다. 폐광의 서술이
             # "천장이 낮아 활은 거리를 못 살린다" 이다.
@@ -113,15 +112,10 @@ def damage(
     skill: SkillDef | None,
     crit: bool,
 ) -> tuple[int, Breakdown]:
-    kind = skill.kind if skill else attacker.weapon.kind
-    if kind == "physical":
-        stat_part = attacker.stats.str_ * STR_DAMAGE_COEF
-        stat_label = "힘"
-    else:
-        stat_part = attacker.stats.int_ * INT_DAMAGE_COEF
-        stat_label = "지능"
+    # 피해는 전부 힘에서 나온다. 지능은 육성 효율에만 걸린다(기획서 v3 §4.2).
+    stat_part = attacker.stats.str_ * STR_DAMAGE_COEF
     base = skill.base if (skill and skill.base) else attacker.weapon.base_damage
-    bd: Breakdown = [("기본", base), (stat_label, round(stat_part, 1))]
+    bd: Breakdown = [("기본", base), ("힘", round(stat_part, 1))]
     raw = base + stat_part
 
     armor = defender.armor.armor + defender.weapon.armor
@@ -133,14 +127,6 @@ def damage(
     bd.append((f"방어력 {armor}", round(reduction, 2)))
     raw *= reduction
 
-    env_mult = env.damage_modifiers.get(kind, 1.0)
-    if env_mult != 1.0:
-        bd.append((f"환경 {env.name} {kind}", env_mult))
-        raw *= env_mult
-    ward = defender.status("ward")
-    if ward and kind == "magic":
-        bd.append(("마법 저항", -ward.value))
-        raw *= 1 - ward.value
     if defender.defending:
         bd.append(("방어 태세", DEFEND_MULT))
         raw *= DEFEND_MULT

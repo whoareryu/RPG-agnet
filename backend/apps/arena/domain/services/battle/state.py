@@ -33,7 +33,7 @@ from apps.arena.domain.services.rules.stats import hp_max, stamina_max
 
 @dataclass
 class Status:
-    """지속 효과. name: guard | slow | blind | bless | ward. turns 가 0 이 되면 사라진다."""
+    """지속 효과. name: guard | slow | blind | bless. turns 가 0 이 되면 사라진다."""
 
     name: str
     turns: int
@@ -96,7 +96,6 @@ class ActionRecord:
     faction: str
     action: str  # Action.label()
     target: str | None
-    damage_kind: str | None
     damage: int
     healed: int
 

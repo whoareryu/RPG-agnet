@@ -10,7 +10,7 @@ from apps.arena.domain.ports.ports import JsonSchema
 ACTION_KINDS = ["ATTACK", "DEFEND", "SKILL", "MOVE", "FLEE", "WAIT"]
 STRATEGIES = ["rush", "attrition", "defensive", "retreat"]
 POSITIONS = ["front", "back"]
-ADAPTATIONS = ["focus", "ward", "target_healer", "summon_faster"]
+ADAPTATIONS = ["focus", "breach", "target_healer", "summon_faster"]
 
 ORCHESTRATOR_SCHEMA: JsonSchema = {
     "type": "object",

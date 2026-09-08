@@ -26,13 +26,13 @@ const TRIGGER_KO: Record<string, string> = {
 
 const ADAPT_KO: Record<string, string> = {
   repeat_attacker: "같은 자가 세 턴 연속 자신을 노린 것",
-  magic_heavy: "마법 피해가 대부분인 것",
+  frontline_wall: "앞줄이 계속 막고 있는 것",
   healing: "치유가 반복되는 것",
   turtle: "상대가 방어만 하는 것",
 };
 const COUNTER_KO: Record<string, string> = {
   focus: "그를 우선 노리기로 한다",
-  ward: "마법 저항 결계를 두른다",
+  breach: "앞줄의 방패부터 부순다",
   target_healer: "치유자를 먼저 노린다",
   summon_faster: "잔해를 더 자주 불러 모은다",
 };

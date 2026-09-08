@@ -20,7 +20,6 @@ from apps.arena.domain.constants.balance import (
 Build = Literal["slim", "normal", "sturdy"]
 Gender = Literal["female", "male"]
 Position = Literal["front", "back"]
-DamageKind = Literal["physical", "magic"]
 
 STAT_NAMES: tuple[str, ...] = ("str_", "agi", "con", "int_", "wis", "luck")
 # 화면·API 가 쓰는 이름. 파이썬 예약어(str·int) 때문에 필드명에 밑줄이 붙었다.
@@ -157,7 +156,6 @@ class Equipment:
     min_height: int  # 0 이면 무관. 장궁·장창류만 값이 있다
     min_str: int
     base_damage: int
-    kind: DamageKind
     armor: int = 0
     is_long: bool = False  # 키 미달 페널티 대상
     ranged: bool = False  # 후열에서도 아무나 노린다. 근접은 전열이 살아 있으면 전열만
@@ -167,7 +165,6 @@ class Equipment:
 class SkillDef:
     name: str
     cost: int
-    kind: DamageKind
     base: int
     target: Literal["enemy", "ally", "self", "all_enemies", "all_allies"]
     # heal | damage | guard(전열 보호) | slow | blind | bless | snipe | double | crit
@@ -193,7 +190,6 @@ class Environment:
     description: str
     speed_penalty_by_weight: dict[int, int]  # 무게등급 → 속도 페널티
     stamina_multiplier: float
-    damage_modifiers: dict[str, float]  # "physical"|"magic" → 배수
     range_penalty: int  # 후열 원거리 명중 페널티(%)
     darkness: bool  # 지혜 마스킹 한 단계 강화
 

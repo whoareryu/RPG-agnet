@@ -9,7 +9,6 @@ SWAMP = Environment(
     ),
     speed_penalty_by_weight={3: -2},
     stamina_multiplier=1.5,
-    damage_modifiers={"physical": 1.0, "magic": 0.8},
     range_penalty=0,
     darkness=False,
 )
@@ -22,7 +21,6 @@ MINE = Environment(
     ),
     speed_penalty_by_weight={},
     stamina_multiplier=1.0,
-    damage_modifiers={"physical": 1.0, "magic": 1.1},
     range_penalty=10,
     darkness=True,
 )

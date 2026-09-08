@@ -324,7 +324,7 @@ class FakeModel:
         target_name = names.get(target, target) if target else "적"
         adapt_ko = {
             "focus": " 저 자가 계속 나를 노렸다.",
-            "ward": " 마법이 성가시다. 결계를 두른다.",
+            "breach": " 앞줄이 계속 막는다. 방패를 든 놈부터 부순다.",
             "target_healer": " 상처를 덮는 자를 먼저 부순다.",
             "summon_faster": " 잔해를 더 자주 불러 모은다.",
         }

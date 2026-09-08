@@ -138,3 +138,21 @@ def test_행운은_판단에_개입하지_않는다():
         | _속성_접근_파일들("content", "luck")
     )
     assert hits <= 허용, f"굴림 밖에서 luck 을 읽는다: {hits - 허용}"
+
+
+def test_마법은_어디에도_남아_있지_않다():
+    """기획서 v3 §0.2 — 회복 주문도, 적 마법사도, 언데드도 없다.
+
+    힐러를 넣는 순간 사망률 곡선(§6.0)과 자원 딜레마(§5.0)가 동시에 무너진다.
+    설정이 아니라 설계라서 테스트로 굳힌다.
+    """
+    금지어 = ("magic", "마법", "ward", "마도서", "지팡이")
+    뿌리 = [Path("apps/arena"), Path("content"), Path("eval")]
+    hits: list[str] = []
+    for root in 뿌리:
+        for py in _파일들(root):
+            원문 = py.read_text(encoding="utf-8")
+            for 낱말 in 금지어:
+                if 낱말 in 원문:
+                    hits.append(f"{py}: {낱말}")
+    assert not hits, "마법 흔적이 남았다: " + ", ".join(hits)

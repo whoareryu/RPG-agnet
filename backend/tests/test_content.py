@@ -123,8 +123,9 @@ def test_마른_캐릭터를_전사로_키워도_막지_않는다():
 def test_환경_수치는_설계와_같다():
     assert SWAMP.speed_penalty_by_weight == {3: -2}
     assert SWAMP.stamina_multiplier == 1.5
-    assert SWAMP.damage_modifiers["magic"] == 0.8
-    assert MINE.darkness and MINE.range_penalty == 10 and MINE.damage_modifiers["magic"] == 1.1
+    assert MINE.darkness and MINE.range_penalty == 10
+    # 피해 배수 축은 사라졌다(기획서 v3 §0.2). 환경은 속도·스태미나·어둠·사거리로 갈린다.
+    assert not hasattr(SWAMP, "damage_modifiers")
 
 
 def test_보스는_유닛_하나와_소환_규칙이다():

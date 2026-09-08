@@ -77,13 +77,16 @@ def test_방어_태세는_피해를_절반으로():
     assert ("방어 태세", 0.5) in bd
 
 
-def test_늪지는_마법_피해를_줄인다():
-    """마법 피해원은 음유시인의 북·류트다 — 마법사가 사라진 뒤로(설계 2026-09-08)."""
-    b = _battle(env=SWAMP, party=("garret", "elaine", "kyle"))
-    d_swamp, bd = damage(b.units["elaine"], b.units["vargas"], SWAMP, None, crit=False)
-    d_mine, _ = damage(b.units["elaine"], b.units["vargas"], MINE, None, crit=False)
-    assert d_swamp < d_mine
-    assert ("환경 늪지 magic", 0.8) in bd
+def test_환경은_더는_피해를_바꾸지_않는다():
+    """기획서 v3 §0.2 — 피해 종류가 하나가 되면서 환경의 피해 배수도 사라졌다.
+
+    환경은 이제 속도·스태미나·어둠·사거리로만 갈린다. 같은 타격이면
+    늪지든 폐광이든 피해가 같다.
+    """
+    b = _battle(party=("garret", "elaine", "kyle"))
+    d_swamp, _ = damage(b.units["garret"], b.units["vargas"], SWAMP, None, crit=False)
+    d_mine, _ = damage(b.units["garret"], b.units["vargas"], MINE, None, crit=False)
+    assert d_swamp == d_mine
 
 
 def test_치명타는_1_5배():

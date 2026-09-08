@@ -19,44 +19,44 @@ from apps.arena.domain.entities.types import BuildChoice, Character, Equipment, 
 # ─── 무기 ─────────────────────────────────────────────────────────────
 WEAPONS: dict[str, Equipment] = {
     # 방패병 — 피해는 낮고 방어가 붙는다
-    "타워 실드": Equipment("타워 실드", 3, 0, 12, 4, "physical", armor=20),
-    "방패와 검": Equipment("방패와 검", 3, 0, 10, 10, "physical", armor=10),
+    "타워 실드": Equipment("타워 실드", 3, 0, 12, 4, armor=20),
+    "방패와 검": Equipment("방패와 검", 3, 0, 10, 10, armor=10),
     # 전사 — 피해가 높고 방어가 없다
-    "장창": Equipment("장창", 2, 175, 9, 13, "physical", is_long=True),
-    "대검": Equipment("대검", 3, 0, 14, 15, "physical"),
-    "전투 도끼": Equipment("전투 도끼", 3, 0, 13, 14, "physical"),
-    "워해머": Equipment("워해머", 2, 0, 14, 16, "physical"),
+    "장창": Equipment("장창", 2, 175, 9, 13, is_long=True),
+    "대검": Equipment("대검", 3, 0, 14, 15),
+    "전투 도끼": Equipment("전투 도끼", 3, 0, 13, 14),
+    "워해머": Equipment("워해머", 2, 0, 14, 16),
     # 음유시인 — 소리가 무기다. 피해는 곁다리고 역할은 지원이다
-    "북": Equipment("북", 1, 0, 3, 4, "magic", ranged=True),
-    "류트": Equipment("류트", 1, 0, 3, 5, "magic", ranged=True),
-    "장궁": Equipment("장궁", 2, 170, 9, 11, "physical", is_long=True, ranged=True),
-    "단궁": Equipment("단궁", 1, 0, 6, 8, "physical", ranged=True),
-    "석궁": Equipment("석궁", 2, 0, 12, 13, "physical", ranged=True),
-    "단검": Equipment("단검", 1, 0, 4, 7, "physical"),
-    "투척 나이프": Equipment("투척 나이프", 1, 0, 5, 6, "physical", ranged=True),
-    "성표": Equipment("성표", 1, 0, 3, 5, "magic", ranged=True),
+    "나팔": Equipment("나팔", 1, 0, 3, 4, ranged=True),
+    "단검과 붕대": Equipment("단검과 붕대", 1, 0, 3, 5),
+    "장궁": Equipment("장궁", 2, 170, 9, 11, is_long=True, ranged=True),
+    "단궁": Equipment("단궁", 1, 0, 6, 8, ranged=True),
+    "석궁": Equipment("석궁", 2, 0, 12, 13, ranged=True),
+    "단검": Equipment("단검", 1, 0, 4, 7),
+    "투척 나이프": Equipment("투척 나이프", 1, 0, 5, 6, ranged=True),
+    "성표": Equipment("성표", 1, 0, 3, 5, ranged=True),
 }
 
 ARMORS: dict[str, Equipment] = {
-    "판금 갑옷": Equipment("판금 갑옷", 3, 0, 11, 0, "physical", armor=30),
-    "사슬 갑옷": Equipment("사슬 갑옷", 2, 0, 8, 0, "physical", armor=18),
-    "가죽 갑옷": Equipment("가죽 갑옷", 1, 0, 4, 0, "physical", armor=8),
-    "로브": Equipment("로브", 1, 0, 1, 0, "physical", armor=3),
+    "판금 갑옷": Equipment("판금 갑옷", 3, 0, 11, 0, armor=30),
+    "사슬 갑옷": Equipment("사슬 갑옷", 2, 0, 8, 0, armor=18),
+    "가죽 갑옷": Equipment("가죽 갑옷", 1, 0, 4, 0, armor=8),
+    "로브": Equipment("로브", 1, 0, 1, 0, armor=3),
 }
 
 # ─── 스킬 ─────────────────────────────────────────────────────────────
 SKILLS: dict[str, SkillDef] = {
     # 피해가 0 이다 — 방패병은 막는 사람이다. guard 는 base 를 읽지 않는다.
-    "방패 밀치기": SkillDef("방패 밀치기", 8, "physical", 0, "self", "guard", 2),
-    "전열 압박": SkillDef("전열 압박", 10, "physical", 0, "all_enemies", "slow", 2),
-    "강타": SkillDef("강타", 10, "physical", 14, "enemy", "damage"),
-    "휩쓸기": SkillDef("휩쓸기", 12, "physical", 10, "all_enemies", "damage"),
-    "조준 사격": SkillDef("조준 사격", 9, "physical", 12, "enemy", "snipe"),
-    "연사": SkillDef("연사", 10, "physical", 6, "enemy", "double"),
-    "급소 찌르기": SkillDef("급소 찌르기", 9, "physical", 9, "enemy", "crit", 30),
-    "연막": SkillDef("연막", 8, "physical", 0, "all_enemies", "blind", 2),
-    "치유": SkillDef("치유", 10, "magic", 0, "ally", "heal", 25),
-    "축복": SkillDef("축복", 8, "magic", 0, "all_allies", "bless", 2),
+    "방패 밀치기": SkillDef("방패 밀치기", 8, 0, "self", "guard", 2),
+    "전열 압박": SkillDef("전열 압박", 10, 0, "all_enemies", "slow", 2),
+    "강타": SkillDef("강타", 10, 14, "enemy", "damage"),
+    "휩쓸기": SkillDef("휩쓸기", 12, 10, "all_enemies", "damage"),
+    "조준 사격": SkillDef("조준 사격", 9, 12, "enemy", "snipe"),
+    "연사": SkillDef("연사", 10, 6, "enemy", "double"),
+    "급소 찌르기": SkillDef("급소 찌르기", 9, 9, "enemy", "crit", 30),
+    "연막": SkillDef("연막", 8, 0, "all_enemies", "blind", 2),
+    "치유": SkillDef("치유", 10, 0, "ally", "heal", 25),
+    "축복": SkillDef("축복", 8, 0, "all_allies", "bless", 2),
 }
 
 
@@ -115,7 +115,7 @@ CLASSES: dict[str, ClassDef] = {
         ("wis", "int_"),
         ("slim", "normal", "sturdy"),
         0,
-        ("북", "류트"),
+        ("나팔", "단검과 붕대"),
         ("치유", "축복"),
         can_heal=True,
     ),
@@ -196,7 +196,7 @@ def choose_build(c: Character) -> BuildChoice:
         )
     # bard — 살리는 사람이다. 북으로 박자를 잡고, 지혜가 받치면 곡을 끌고 간다.
     if s.wis >= 12:
-        w, why = WEAPONS["류트"], "지혜가 높다. 류트로 곡을 끌고 가며 아군의 손을 맞춘다."
+        w, why = WEAPONS["단검과 붕대"], "지혜가 높다. 앞에 붙어 지혈하고 봉합한다."
     else:
-        w, why = WEAPONS["북"], "먼저 박자를 잡아야 한다. 북으로 전투의 리듬을 세운다."
+        w, why = WEAPONS["나팔"], "먼저 신호가 서야 한다. 나팔로 대열의 박자를 잡는다."
     return BuildChoice(w, ARMORS["가죽 갑옷"], skills, why)

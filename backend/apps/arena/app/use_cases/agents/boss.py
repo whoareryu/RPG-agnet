@@ -10,21 +10,19 @@ from apps.arena.app.use_cases.agents.prompts import build_boss_prompt
 from apps.arena.app.use_cases.agents.schemas import ADAPTATIONS, BOSS_SCHEMA
 from apps.arena.domain.constants.balance import (
     ADAPT_DEFEND_RATIO,
+    ADAPT_FRONTLINE_RATIO,
     ADAPT_HEAL_COUNT,
-    ADAPT_MAGIC_RATIO,
-    ADAPT_WARD_MAGIC_RESIST,
-    ADAPT_WARD_TURNS,
     ADAPT_WINDOW,
 )
 from apps.arena.domain.entities.trace_event import Tracer
 from apps.arena.domain.entities.types import Action
 from apps.arena.domain.ports.ports import DecisionModel
-from apps.arena.domain.services.battle.state import Battle, Status, available_actions, enemies_of
+from apps.arena.domain.services.battle.state import Battle, available_actions, enemies_of
 from apps.arena.domain.services.josa import with_josa
 
 PATTERN_TO_COUNTER = {
     "repeat_attacker": "focus",
-    "magic_heavy": "ward",
+    "frontline_wall": "breach",
     "healing": "target_healer",
     "turtle": "summon_faster",
 }
@@ -60,11 +58,34 @@ def detect_adaptation(battle: Battle, boss_id: str) -> tuple[str | None, dict[st
                     "turns": sorted(hits),
                     "tie_rule": "먼저 공격을 시작한 쪽",
                 }
-    # ② 피해의 60% 이상이 마법
-    total = sum(h.damage for h in recent)
-    magic = sum(h.damage for h in recent if h.damage_kind == "magic")
-    if "magic_heavy" not in already and total > 0 and magic / total >= ADAPT_MAGIC_RATIO:
-        return "magic_heavy", {"magic": magic, "total": total, "ratio": round(magic / total, 2)}
+    # ② 내 공격이 전열에 막힌다 — 방패병이 벽을 세웠다(기획서 v3 §8.4).
+    #
+    # 파티 행동이 아니라 **보스 자신의 타격**을 본다. 근접 공격은 전열이 살아
+    # 있는 한 후열에 닿지 않으므로(resolve.py 의 reachable), 내가 때린 것이
+    # 전부 앞줄이면 뒤를 치려면 앞을 부수는 수밖에 없다.
+    mine = [
+        h
+        for h in battle.history
+        if h.faction == boss.faction and window_start <= h.turn < battle.turn
+    ]
+    dealt = sum(h.damage for h in mine)
+    front_ids = {
+        u.id for u in battle.units.values() if u.faction != boss.faction and u.position == "front"
+    }
+    walled = sum(h.damage for h in mine if h.target in front_ids)
+    if "frontline_wall" not in already and dealt > 0 and walled / dealt >= ADAPT_FRONTLINE_RATIO:
+        blocker = max(
+            (u for u in battle.units.values() if u.id in front_ids and u.alive),
+            key=lambda u: (u.armor.armor + u.weapon.armor, u.hp),
+            default=None,
+        )
+        if blocker is not None:
+            return "frontline_wall", {
+                "blocker": blocker.id,
+                "walled": walled,
+                "dealt": dealt,
+                "ratio": round(walled / dealt, 2),
+            }
     # ③ 치유 2회 이상
     heals = [h for h in recent if h.healed > 0]
     if "healing" not in already and len(heals) >= ADAPT_HEAL_COUNT:
@@ -85,25 +106,12 @@ def apply_adaptation(
     보여주는데 상태가 한 번도 안 바뀌면 로그가 거짓말한다(QA 라운드 1 P1-9).
     """
     counter = PATTERN_TO_COUNTER[pattern]
-    boss = battle.units[boss_id]
     effect: dict[str, Any] = {}
-    if counter in ("focus", "target_healer"):
+    if counter in ("focus", "target_healer", "breach"):
         before = battle.boss_focus
-        after = evidence["actor"] if counter == "focus" else evidence["healer"]
-        battle.boss_focus = after
-        effect = {"field": "boss_focus", "before": before, "after": after}
-    elif counter == "ward":
-        existing = boss.status("ward")
-        effect = {
-            "field": "ward",
-            "before": existing.value if existing else 0,
-            "after": ADAPT_WARD_MAGIC_RESIST,
-            "turns": ADAPT_WARD_TURNS,
-        }
-        if existing:
-            existing.turns = max(existing.turns, ADAPT_WARD_TURNS)
-        else:
-            boss.statuses.append(Status("ward", ADAPT_WARD_TURNS, ADAPT_WARD_MAGIC_RESIST))
+        after = {"focus": "actor", "target_healer": "healer", "breach": "blocker"}[counter]
+        battle.boss_focus = evidence[after]
+        effect = {"field": "boss_focus", "before": before, "after": battle.boss_focus}
     elif counter == "summon_faster":
         before = battle.summon_every
         # 바닥을 2 로 둔다. 설계 §5.6 은 "3→2턴" 이고, 창이 지날 때마다 다시

@@ -7,6 +7,7 @@
 
 from dataclasses import dataclass, field
 
+from core.agents.josa import with_josa
 from core.battle.state import (
     ActionRecord,
     Battle,
@@ -78,7 +79,10 @@ def _valid_enemy_target(
     fallback = min(reachable, key=lambda f: f.hp)
     if target_id is None:
         return fallback.id, None
-    return fallback.id, f"{target_id} 는 노릴 수 없다(전열이 막음) → {fallback.id} 로 변경"
+    blocked = battle.units[target_id].name if target_id in battle.units else target_id
+    to = with_josa(fallback.name, "으로")
+    note = f"{with_josa(blocked, '은')} 노릴 수 없다(전열이 막음) → {to} 변경"
+    return fallback.id, note
 
 
 def _strike(
@@ -167,7 +171,7 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
             tgt = battle.units.get(tid)
             if tgt is None or tgt.faction != actor.faction or not tgt.active:
                 tgt = min([actor, *allies_of(battle, actor_id)], key=lambda u: u.hp / u.hp_max)
-                rec.notes.append(f"치유 대상 변경 → {tgt.id}")
+                rec.notes.append(f"치유 대상 변경 → {tgt.name}")
             rec.target = tgt.id
             before = tgt.hp
             tgt.hp = min(tgt.hp_max, tgt.hp + skill.magnitude)

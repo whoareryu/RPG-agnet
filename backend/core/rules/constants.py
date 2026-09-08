@@ -48,6 +48,7 @@ HIT_MAX = 95
 
 STAMINA_COST = {"ATTACK": 5, "DEFEND": 0, "MOVE": 3, "FLEE": 4, "WAIT": 0}
 
+
 # ─── 효율 스펙트럼 (설계 §4.3) ────────────────────────────────────────
 MISMATCH_HIT_PENALTY = 10  # 무게등급 미달 1당 명중 -10%
 MISMATCH_SPEED_PENALTY = 1
@@ -74,9 +75,19 @@ REPLAN_DEVIATION_COOLDOWN = 3
 PRESSURE_HP_WEIGHT = 0.5
 PRESSURE_LOSS_WEIGHT = 0.3
 PRESSURE_LIFE_WEIGHT = 0.2
-ADJUST_RISK = -0.003
-ADJUST_SACRIFICE = -0.003
+# 성향이 이탈 확률에 들어가는 방식.
+#
+# 세 축에 같은 계수를 주면 축이 수학적으로 구별되지 않는다 — E3 의 "성향별
+# 행동 분포" 가 같은 숫자를 세 번 그리게 된다(QA 라운드 2). 축마다 **무엇을**
+# 흔드는지가 달라야 한다:
+#   위험 성향  → 자기 상처를 얼마나 크게 느끼는가 (HP 항의 배수)
+#   희생 수용도 → 남이 쓰러진 것과 두고 온 가족을 얼마나 크게 느끼는가
+#   협동 성향  → 전체적으로 자리를 지키는가 (평탄한 보정)
+ADJUST_RISK = -0.0015
+ADJUST_SACRIFICE = -0.0015
 ADJUST_COOPERATION = -0.002
+# 성향이 압력 항을 얼마나 늘이고 줄이는가. ±80 이면 ×0.6 ~ ×1.4.
+PRESSURE_SCALE_DIVISOR = 200
 DEVIATION_SIGMOID_GAIN = 4.0
 DEVIATION_SIGMOID_SHIFT = 2.5
 DEVIATION_MIN = 0.02

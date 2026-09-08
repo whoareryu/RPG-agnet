@@ -385,19 +385,16 @@ def _config(
 
 
 def _config_from_payload(p: dict[str, Any]) -> RunConfig:
-    """run_start payload → RunConfig. 리플레이는 같은 설정이어야 같은 질문이 나온다."""
-    roster = {r["id"]: r for r in p.get("roster", [])}
-    classes = {cid: r["class"] for cid, r in roster.items()}
-    allocations = {
-        cid: {k: v - STAT_BASE for k, v in r["stats"].items() if v - STAT_BASE > 0}
-        for cid, r in roster.items()
-    }
+    """run_start payload → RunConfig. 리플레이는 같은 설정이어야 같은 질문이 나온다.
+
+    설정을 역산하지 않는다 — run_start 가 유저의 방향 결정을 그대로 싣는다.
+    """
     return _config(
         seed=int(p["seed"]),
         lineup=tuple(p["lineup"]),
-        allocations=allocations,
-        classes=classes,
-        genders={},
+        allocations={k: dict(v) for k, v in (p.get("allocations") or {}).items()},
+        classes=dict(p.get("classes") or {}),
+        genders=dict(p.get("genders") or {}),
         orchestrator=bool(p["orchestrator_on"]),
         adaptation=bool(p["adaptation_on"]),
         missions=MISSIONS_B if p.get("mission_count", 1) == 2 else MISSIONS_A,

@@ -47,6 +47,7 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
   const [orchestrator, setOrchestrator] = useState(true);
   const [adaptation, setAdaptation] = useState(true);
   const [seed, setSeed] = useState<string>("");
+  const [missions, setMissions] = useState<1 | 2>(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +57,9 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
       const p = validate(allocs[c.id], preset.stat_base, preset.free_points);
       if (p) out.push(`${c.name}: ${p}`);
     }
-    if (lineup.length !== preset.lineup_size) out.push(`출전 인원은 ${preset.lineup_size}명이어야 한다 (지금 ${lineup.length}명)`);
+    if (lineup.length === 0) out.push("적어도 한 명은 내보내야 한다");
+    if (lineup.length > preset.lineup_size)
+      out.push(`출전은 최대 ${preset.lineup_size}명이다 (지금 ${lineup.length}명)`);
     return out;
   }, [allocs, lineup, preset]);
 
@@ -79,16 +82,27 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
       orchestrator,
       adaptation,
       seed: seed.trim() === "" ? null : Number(seed),
-      missions: 1,
+      missions,
     };
-    const r = await fetch("/api/runs", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setError(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data));
+    try {
+      const r = await fetch("/api/runs", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data));
+        setBusy(false);
+        return;
+      }
+      router.push(`/battle/${data.run_id}`);
+    } catch (e) {
+      // fetch 자체가 던지면(네트워크 끊김·서버 재시작) busy 가 굳어 버튼이
+      // 영영 잠긴다. 새로고침 말고는 탈출구가 없었다(QA 라운드 2).
+      setError(`보내지 못했다: ${(e as Error).message}`);
       setBusy(false);
-      return;
     }
-    router.push(`/battle/${data.run_id}`);
   }
 
   return (
@@ -126,7 +140,10 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
       <section className="card" style={{ gap: 12 }}>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div className="stack" style={{ gap: 2 }}>
-            <div className="card-kicker">출전 · 폐광의 군주 (출전 {preset.lineup_size}명)</div>
+            <div className="card-kicker">
+            출전 · {missions === 1 ? "폐광의 군주" : "늪지의 구울 → 인터미션 → 폐광의 군주"} (최대{" "}
+            {preset.lineup_size}명)
+          </div>
             <div className="row small">
               {lineup.length === 0 ? (
                 <span className="faint">카드에서 &ldquo;출전&rdquo;을 눌러 고른다</span>
@@ -147,6 +164,13 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
             <label className="row" style={{ gap: 4 }}>
               <input type="checkbox" checked={adaptation} onChange={(e) => setAdaptation(e.target.checked)} />
               보스 적응
+            </label>
+            <label className="row" style={{ gap: 4 }} title="2판을 고르면 사이에 인터미션이 붙는다 — 육성 지시와 생애 사건이 다음 판의 판단을 바꾼다">
+              계약
+              <select value={missions} onChange={(e) => setMissions(Number(e.target.value) as 1 | 2)}>
+                <option value={1}>1판 (보스전)</option>
+                <option value={2}>2판 + 인터미션</option>
+              </select>
             </label>
             <label className="row" style={{ gap: 4 }}>
               시드

@@ -66,13 +66,17 @@ def hit_chance(
         if m.hit:
             bd.append((f"{label} 효율", m.hit))
             v += m.hit
-    if (
-        attacker.position == "back"
-        and env.range_penalty
-        and not (skill and skill.effect == "snipe")
-    ):
-        bd.append((f"환경 {env.name} 거리", -env.range_penalty))
-        v -= env.range_penalty
+    if attacker.position == "back":
+        ranged = attacker.weapon.ranged or (skill is not None and skill.kind == "magic")
+        if ranged:
+            # 환경의 거리 페널티는 **원거리에만** 붙는다. 폐광의 서술이
+            # "천장이 낮아 활은 거리를 못 살린다" 이다.
+            if env.range_penalty and not (skill and skill.effect == "snipe"):
+                bd.append((f"환경 {env.name} 거리", -env.range_penalty))
+                v -= env.range_penalty
+        # 근접이 뒤에 서는 데에는 페널티를 물리지 않는다. 물려 봤더니(150시드)
+        # 전 근접 파티가 이중으로 벌을 받아 승률이 11%까지 떨어졌다 — 조합을
+        # 벌하는 규칙이 아니라 편성 판단을 재는 규칙이어야 한다.
     blind = attacker.status("blind")
     if blind:
         bd.append(("연막", -blind.value))

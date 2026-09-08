@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Dashboard from "@/components/Dashboard";
 import Inspector from "@/components/Inspector";
+import IntermissionPanel from "@/components/IntermissionPanel";
 import NarrativeStream from "@/components/NarrativeStream";
-import { buildNameMap, isKind, type TraceEvent } from "@/lib/trace";
+import { buildNameMap, isKind, KINDS, type TraceEvent } from "@/lib/trace";
 
 type Status = "connecting" | "live" | "done" | "error";
 
@@ -16,6 +18,8 @@ export default function BattleClient({ runId }: { runId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
   const [follow, setFollow] = useState(true);
+  const [showQuiet, setShowQuiet] = useState(false);
+  const [sentFor, setSentFor] = useState<number[]>([]);
   const seen = useRef(new Set<number>());
 
   useEffect(() => {
@@ -33,7 +37,7 @@ export default function BattleClient({ runId }: { runId: string }) {
     };
     es.onmessage = onEvent;
     // 서버가 event: <kind> 로 보내므로 종류별로 붙인다.
-    for (const k of KIND_LIST) es.addEventListener(k, onEvent as EventListener);
+    for (const k of KINDS) es.addEventListener(k, onEvent as EventListener);
     es.addEventListener("done", () => {
       setStatus("done");
       es.close();
@@ -58,6 +62,14 @@ export default function BattleClient({ runId }: { runId: string }) {
   const names = useMemo(() => buildNameMap(events), [events]);
   const selected = useMemo(() => events.find((e) => e.seq === selectedSeq) ?? null, [events, selectedSeq]);
   const runEnd = events.find((e) => e.kind === "run_end");
+  // 인터미션이 입력을 기다리는 중인가 — 그 뒤에 다른 이벤트가 오면 이미 지나갔다.
+  const awaiting = useMemo(() => {
+    const idx = events.findLastIndex(
+      (e) => e.kind === "intermission_start" && e.payload.awaiting_input,
+    );
+    if (idx < 0 || sentFor.includes(events[idx].seq)) return null;
+    return idx === events.length - 1 ? events[idx] : null;
+  }, [events, sentFor]);
   const missionStart = events.find((e) => e.kind === "mission_start");
   const title = missionStart ? String((missionStart.payload.name as string) ?? "") : "";
 
@@ -81,6 +93,10 @@ export default function BattleClient({ runId }: { runId: string }) {
             <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
             따라가기
           </label>
+          <label className="row" style={{ gap: 4 }} title="승산·순응·행동 순서까지 전부 보여준다">
+            <input type="checkbox" checked={showQuiet} onChange={(e) => setShowQuiet(e.target.checked)} />
+            전부 보기
+          </label>
           {runEnd && (
             <Link className="btn btn-sm btn-primary" href={`/result/${runId}`}>
               결과 보기 →
@@ -100,22 +116,45 @@ export default function BattleClient({ runId }: { runId: string }) {
         </div>
       )}
 
-      <div className="panels">
-        <section className="card panel" style={{ gap: 8 }}>
+      {awaiting && (
+        <IntermissionPanel
+          runId={runId}
+          events={events}
+          names={names}
+          timeoutS={Number(awaiting.payload.timeout_s ?? 60)}
+          onSent={() => setSentFor((cur) => [...cur, awaiting.seq])}
+        />
+      )}
+
+      <div className="panels three">
+        <section className="card panel panel-tall" style={{ gap: 8 }}>
           <div className="card-kicker">서사 스트림 · 클릭하면 판정이 열린다</div>
-          <NarrativeStream events={events} names={names} selectedSeq={selectedSeq} onSelect={(s) => { setSelectedSeq(s); setFollow(false); }} follow={follow} />
+          <NarrativeStream
+            events={events}
+            names={names}
+            selectedSeq={selectedSeq}
+            onSelect={(s) => {
+              setSelectedSeq(s);
+              setFollow(false);
+              // 좁은 화면에서는 인스펙터가 아래에 있다 — 눌렀는데 아무 일도
+              // 안 일어난 것처럼 보이면 안 된다.
+              if (typeof window !== "undefined" && window.innerWidth <= 900) {
+                document.getElementById("inspector")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }}
+            follow={follow}
+            showQuiet={showQuiet}
+          />
         </section>
-        <section className="card panel" style={{ gap: 8 }}>
+        <section id="inspector" className="card panel" style={{ gap: 8 }}>
           <div className="card-kicker">판정 인스펙터</div>
           <Inspector event={selected} names={names} events={events} />
+        </section>
+        <section className="card panel" style={{ gap: 8 }}>
+          <div className="card-kicker">상태</div>
+          <Dashboard events={events} names={names} />
         </section>
       </div>
     </main>
   );
 }
-
-const KIND_LIST = [
-  "run_start", "mission_start", "plan", "odds", "turn_start", "context", "compliance", "decision", "resolution",
-  "boss_adapt", "replan_trigger", "abandon", "flee", "summon", "mission_end", "intermission_start", "directive",
-  "train_compliance", "train_result", "life_event", "param_diff", "growth_points", "advice", "run_end",
-];

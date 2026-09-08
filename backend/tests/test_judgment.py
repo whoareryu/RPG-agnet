@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from content.classes import choose_build
 from content.environments import MINE, SWAMP
 from content.monsters import VARGAS
@@ -132,12 +134,37 @@ def test_희생_수용도가_높을수록_이탈_확률이_내린다():
 
 
 def test_가장형은_같은_HP_에서_이탈_압력이_높다():
-    """카일: 딸 2세(기획서 §9 예시). 생애 가중이 압력에 이름으로 남는다."""
+    """카일: 딸 2세(기획서 §9 예시). 생애 가중이 압력에 이름으로 남는다.
+
+    희생 수용도가 그 항을 늘이고 줄인다 — 카일은 -40 이라 기본값보다 크다.
+    """
     b = _battle()
     _, bd = deviation_probability(b.units["kyle"], b)
-    assert bd["pressure_breakdown"]["life"] == 0.2
+    assert bd["pressure_breakdown"]["life"] > 0.2
     _, bd2 = deviation_probability(b.units["garret"], b)
     assert bd2["pressure_breakdown"]["life"] == 0.0
+
+
+def test_성향_축은_서로_다른_항을_흔든다():
+    """QA 라운드 2 — 세 축의 계수가 같으면 E3 가 같은 실험을 세 번 그린다."""
+    from dataclasses import replace as _replace
+
+    b = _battle()
+    u = b.units["garret"]
+    u.hp = u.hp_max // 2
+    기준, _ = deviation_probability(u, b)
+
+    u.disposition = _replace(u.disposition, risk=80)
+    위험높음, bd = deviation_probability(u, b)
+    assert bd["pressure_breakdown"]["hp"] < 0.25, "위험 감수형은 자기 상처를 작게 느낀다"
+
+    u.disposition = _replace(b.units["garret"].disposition, risk=20, sacrifice=80)
+    희생높음, bd2 = deviation_probability(u, b)
+    # 아군 손실도 부양가족도 없는 상황이라 희생 축은 HP 항을 건드리지 않는다.
+    assert bd2["pressure_breakdown"]["hp"] == pytest.approx(
+        deviation_probability(b.units["garret"], b)[1]["pressure_breakdown"]["hp"]
+    )
+    assert 위험높음 != 희생높음 != 기준
 
 
 def test_기획서_9장_시나리오():

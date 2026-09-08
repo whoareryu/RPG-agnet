@@ -53,7 +53,14 @@ function Body({ event, names, events }: { event: TraceEvent; names: Names; event
       return <PlanView p={p} names={names} />;
     case "boss_adapt":
       return (
-        <KV rows={[["관측 패턴", String(p.pattern)], ["대응", String(p.counter)], ["증거", <pre key="e" className="json">{JSON.stringify(withNames(p.evidence, names), null, 2)}</pre>]]} />
+        <KV
+          rows={[
+            ["관측 패턴", String(p.pattern)],
+            ["대응", String(p.counter)],
+            ["실제 변화", effectLine(p.effect as Record<string, unknown> | undefined, names)],
+            ["증거", <pre key="e" className="json">{JSON.stringify(withNames(p.evidence, names), null, 2)}</pre>],
+          ]}
+        />
       );
     case "odds":
       return <OddsView p={p} names={names} />;
@@ -189,7 +196,6 @@ function ContextView({ p, names }: { p: Record<string, unknown>; names: Names })
 }
 
 function DecisionView({ p, names, events, seq }: { p: Record<string, unknown>; names: Names; events: TraceEvent[]; seq: number }) {
-  const meta = (p.model as Record<string, unknown>) ?? {};
   const compliance = [...events].reverse().find((e) => e.kind === "compliance" && e.seq < seq && e.actor === (events.find((x) => x.seq === seq)?.actor ?? ""));
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -199,7 +205,7 @@ function DecisionView({ p, names, events, seq }: { p: Record<string, unknown>; n
           ["방침 준수", p.follows_plan ? "따랐다" : String(p.verdict) === "deviate" ? "이탈" : String(p.verdict) === "policy" ? "고정 정책" : "방침 없음"],
           ["사유", `"${String(p.reason ?? "")}"`],
           ...(p.note ? [["보정", String(p.note)] as [string, string]] : []),
-          ["모델", `${String(meta.model)}${meta.fallback ? " (폴백)" : ""} · 시도 ${String(meta.attempts)} · ${String(meta.latency_ms)}ms`],
+          ["모델", modelLine(p)],
         ]}
       />
       {compliance && (
@@ -266,7 +272,6 @@ function ResolutionView({ r, names }: { r: Resolution; names: Names }) {
 
 function PlanView({ p, names }: { p: Record<string, unknown>; names: Names }) {
   const plan = p.plan as Record<string, unknown>;
-  const meta = (p.model as Record<string, unknown>) ?? {};
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="row">
@@ -294,10 +299,7 @@ function PlanView({ p, names }: { p: Record<string, unknown>; names: Names }) {
         </tbody>
       </table>
       {(p.notes as string[])?.length > 0 && <p className="small faint">보정: {(p.notes as string[]).join(" / ")}</p>}
-      <p className="small faint">
-        모델 {String(meta.model)}
-        {meta.fallback ? " (폴백)" : ""} · 시도 {String(meta.attempts)}
-      </p>
+      <p className="small faint">모델 {modelLine(p)}</p>
       {typeof p.prompt === "string" && (
         <Collapsible title="단장에게 들어간 프롬프트">
           <pre className="json">{p.prompt}</pre>
@@ -308,13 +310,21 @@ function PlanView({ p, names }: { p: Record<string, unknown>; names: Names }) {
 }
 
 function OddsView({ p, names }: { p: Record<string, unknown>; names: Names }) {
-  const bd = p.breakdown as { mine?: { units?: Record<string, Record<string, number>>; synergy?: number; total?: number }; theirs?: { units?: Record<string, Record<string, number>>; total?: number } };
+  type Side = {
+    units?: Record<string, Record<string, number>>;
+    synergy?: number;
+    dps?: number;
+    effective_hp?: number;
+    survives_turns?: number;
+  };
+  const bd = p.breakdown as { mine?: Side; theirs?: Side } | undefined;
   const rows = (side: "mine" | "theirs") =>
     Object.entries(bd?.[side]?.units ?? {}).map(([id, u]) => (
       <tr key={id}>
         <th>{nameOf(id, names)}</th>
         <td className="small">
-          HP {u.hp_ratio} × 기대피해 {u.expected_damage} × 생존 {u.survival} = <b>{u.power}</b>
+          HP {u.hp} · 기대피해 {u.expected_damage} × 스태미나 {u.stamina} × 순응 {u.compliance} ={" "}
+          <b>{u.dps}</b>
         </td>
       </tr>
     ));
@@ -327,16 +337,24 @@ function OddsView({ p, names }: { p: Record<string, unknown>; names: Names }) {
       <table className="kv">
         <tbody>
           <tr>
-            <th colSpan={2}>우리 (합 {bd?.mine?.total} · 시너지 ×{bd?.mine?.synergy})</th>
+            <th colSpan={2}>
+              우리 — 한 턴 {bd?.mine?.dps} 피해 · 실질 HP {bd?.mine?.effective_hp}
+              {bd?.mine?.synergy !== 1 && ` (치유 ×${bd?.mine?.synergy})`} → {bd?.mine?.survives_turns}턴 버팀
+            </th>
           </tr>
           {rows("mine")}
           <tr>
-            <th colSpan={2}>적 (합 {bd?.theirs?.total})</th>
+            <th colSpan={2}>
+              적 — 한 턴 {bd?.theirs?.dps} 피해 · HP {bd?.theirs?.effective_hp} →{" "}
+              {bd?.theirs?.survives_turns}턴 버팀
+            </th>
           </tr>
           {rows("theirs")}
         </tbody>
       </table>
-      <p className="small faint mono">승산 = 우리 / (우리 + 적), 0.05..0.95. 행운은 계산에 없다.</p>
+      <p className="small faint mono">
+        승산 = 우리가 버티는 턴 / (우리 + 적). 행운은 계산에 없다.
+      </p>
     </div>
   );
 }
@@ -390,6 +408,18 @@ function Collapsible({ title, children }: { title: string; children: React.React
   );
 }
 
+/** 모델 한 줄. latency 는 payload.timing 에 있다 — payload.model 에서 찾으면 undefined 다. */
+function modelLine(p: Record<string, unknown>): string {
+  const meta = (p.model as Record<string, unknown>) ?? {};
+  const timing = (p.timing as Record<string, unknown>) ?? {};
+  const ms = timing.latency_ms;
+  return (
+    `${String(meta.model ?? "?")}${meta.fallback ? " (폴백)" : ""}` +
+    ` · 시도 ${String(meta.attempts ?? 0)}` +
+    (ms == null ? "" : ` · ${String(ms)}ms`)
+  );
+}
+
 function pct(v: unknown): string {
   return `${Math.round(Number(v) * 100)}%`;
 }
@@ -397,6 +427,15 @@ function fmt(v: unknown): string {
   const n = Number(v);
   if (Number.isNaN(n)) return String(v);
   return Number.isInteger(n) ? (n > 0 ? `+${n}` : `${n}`) : n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function effectLine(effect: Record<string, unknown> | undefined, names: Names): string {
+  if (!effect) return "기록 없음";
+  if (effect.no_change) return "없음 — 이미 그 상태다";
+  const f = String(effect.field);
+  const before = effect.before == null ? "없음" : nameOf(String(effect.before), names);
+  const after = effect.after == null ? "없음" : nameOf(String(effect.after), names);
+  return `${f}: ${before} → ${after}`;
 }
 
 /** payload 안의 id 문자열을 표시 이름으로 바꾼다 — 인스펙터는 사람이 읽는다. */

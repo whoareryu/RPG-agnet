@@ -208,6 +208,10 @@ pre.json {
 .panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
 @media (max-width: 900px) {
   .panels, .panels.three { grid-template-columns: 1fr; }
-  .panel { position: static; max-height: none; }
   h1 { font-size: 24px; }
+  /* 좁은 화면에서 서사는 자기 안에서만 스크롤한다. 예전에는 높이 제한을 풀어
+     259줄이 세로로 깔리고 인스펙터가 화면 밖으로 밀렸다 — "왼쪽을 누르면
+     가운데가 열린다" 는 핵심 인터랙션이 죽었다(QA 라운드 2). */
+  .panel { position: static; max-height: 46vh; }
+  .panel.panel-tall { max-height: 60vh; }
 }

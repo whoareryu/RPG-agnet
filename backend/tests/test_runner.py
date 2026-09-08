@@ -136,14 +136,28 @@ def test_이탈과_적응이_실제로_재계획을_부른다():
 
 def test_30턴까지_모든_유닛이_행동한다():
     """QA 라운드 1 P1-4 — 턴 상한을 유닛 루프 안에서 보면 마지막 턴이 잘린다."""
-    for seed in range(1, 40):
+    for seed in range(1, 200):
         rec = _run(_config(seed=seed))
         if rec.results[0].outcome != "draw":
             continue
         last = max(e.turn for e in rec.events)
         order = [e for e in rec.events if e.kind == "turn_start" and e.turn == last][0]
+        차례 = [o["unit"] for o in order.payload["order"]]
         acted = {e.actor for e in rec.events if e.kind == "resolution" and e.turn == last}
-        assert len(acted) == len(order.payload["order"]), f"seed {seed}: 마지막 턴이 잘렸다"
+        # 자기 차례 전에 쓰러지거나 빠져나간 유닛은 행동하지 못한다 — 그건 정상이다.
+        사라짐: set[str] = set()
+        for e in rec.events:
+            if e.turn != last:
+                continue
+            if e.kind == "resolution":
+                for st in e.payload["strikes"]:
+                    if st["killed"]:
+                        사라짐.add(st["target"])
+                if e.payload.get("flee_success"):
+                    사라짐.add(e.actor)
+        기대 = [u for u in 차례 if u not in 사라짐 - acted]
+        assert acted >= set(기대) - 사라짐, f"seed {seed}: 마지막 턴이 잘렸다"
+        assert len(acted) >= len(차례) - len(사라짐), f"seed {seed}: 마지막 턴이 잘렸다"
         return
     raise AssertionError("무승부 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다")
 

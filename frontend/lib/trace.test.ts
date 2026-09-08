@@ -53,3 +53,51 @@ test("데모 하이라이트 장면이 샘플에 있다", () => {
   const deviate = events.find((e) => e.kind === "compliance" && e.payload.verdict === "deviate");
   assert.ok(deviate, "이탈 장면이 없다");
 });
+
+// ─── QA 라운드 2 회귀 ──────────────────────────────────────────────────
+
+test("서사에 조사 병기형이 남지 않는다", () => {
+  const names = buildNameMap(events);
+  const bad = events
+    .map((e) => narrate(e, names))
+    .filter((s) => /\(를\)|\(가\)|\(는\)|\(을\)|\(이\)|\(으로\)/.test(s));
+  assert.deepEqual(bad, [], `기계 토큰이 남은 문장 ${bad.length}줄: ${bad.slice(0, 3).join(" / ")}`);
+});
+
+test("어떤 이벤트의 서사에도 영문 id 가 남지 않는다", () => {
+  const names = buildNameMap(events);
+  const ids = Object.keys(names);
+  const pattern = new RegExp(`\\b(${ids.join("|")})\\b`);
+  const bad = events.map((e) => narrate(e, names)).filter((s) => pattern.test(s));
+  assert.deepEqual(bad, [], `id 가 남은 문장 ${bad.length}줄: ${bad.slice(0, 3).join(" / ")}`);
+});
+
+test("자기에게 거는 기술이 광역기처럼 읽히지 않는다", () => {
+  const names = buildNameMap(events);
+  const selfCast = events.filter(
+    (e) => e.kind === "resolution" && e.payload.target === e.actor && (e.payload.strikes as unknown[]).length === 0,
+  );
+  assert.ok(selfCast.length > 0, "자기 대상 기술이 샘플에 없다");
+  for (const e of selfCast) {
+    const s = narrate(e, names);
+    assert.ok(!s.includes("전장에 퍼진다"), s);
+  }
+});
+
+test("변화 없는 적응은 같은 문장을 반복하지 않는다", () => {
+  const names = buildNameMap(events);
+  const adapts = events.filter((e) => e.kind === "boss_adapt");
+  const noChange = adapts.filter((e) => (e.payload.effect as { no_change?: boolean })?.no_change);
+  if (noChange.length === 0) return;
+  const changed = adapts.filter((e) => !(e.payload.effect as { no_change?: boolean })?.no_change);
+  const a = narrate(noChange[0], names);
+  assert.ok(changed.every((e) => narrate(e, names) !== a), "변화 있는 적응과 없는 적응이 같은 문장이다");
+});
+
+test("지혜 마스킹이 서사에 드러난다", () => {
+  const names = buildNameMap(events);
+  const ctx = events.filter((e) => e.kind === "context" && (e.payload.masked as string[]).length > 0);
+  assert.ok(ctx.length > 0);
+  const s = narrate(ctx[0], names);
+  assert.ok(/안 보인다/.test(s) && /지혜/.test(s), s);
+});

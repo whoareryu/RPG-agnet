@@ -44,7 +44,15 @@ const W = 320;
 function Bar({ cell }: { cell: Cell }) {
   let x = 0;
   return (
-    <svg width={W} height={12} viewBox={`0 0 ${W} 12`} role="img" aria-label="결과 분포">
+    <svg
+      width="100%"
+      height={12}
+      viewBox={`0 0 ${W} 12`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="결과 분포"
+      style={{ minWidth: 120, flex: 1 }}
+    >
       <rect x={0} y={1} width={W} height={10} rx={3} fill="var(--color-surface-2)" />
       {SEGMENTS.map((s) => {
         const w = W * (cell[s.key] as number);

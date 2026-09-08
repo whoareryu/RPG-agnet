@@ -11,6 +11,7 @@
 import json
 from typing import Any
 
+from core.agents.josa import with_josa
 from core.agents.prompts import CTX_CLOSE, CTX_OPEN
 from core.ports import JsonSchema, Role
 
@@ -99,50 +100,46 @@ class FakeModel:
                 ),
             }
 
-        # 편성: 버틸 수 있는 만큼만 앞에 세운다.
+        # 편성: 원거리·치유자는 뒤, 근접은 앞. 그리고 **가장 잘 때리는 사람 하나를
+        # 전열 뒤에 세운다.**
         #
         # 근접 적은 전열이 살아 있는 한 후열에 닿지 못한다(core/battle/resolve.py).
-        # 그래서 "전사는 전부 전열" 은 맞을 자리를 늘리기만 한다 — 실측(30시드,
-        # 전사 몰빵)에서 감독 ON 의 승률이 3%, 고정 편성인 OFF 가 33% 였다.
-        # 방패를 든 하나가 앞에 서고 나머지는 뒤에서 친다.
-        def durability(u: dict[str, Any]) -> tuple[int, int]:
-            return (u["weight_class"], u["hp_pct"])
+        # 그러니 전열은 방패고, 방패 뒤에서 계속 때리는 사람이 판을 끝낸다.
+        # 실측(200시드, 전 근접 조합): 전원을 앞에 세우면 승률 1%, 최고 딜러
+        # 하나를 뒤에 두면 26%. 그 하나가 끝까지 살아 피해를 넣기 때문이다.
+        formation = {}
+        for u in units:
+            back = u["ranged"] or u["can_heal"]
+            formation[u["id"]] = "back" if back else "front"
 
-        formation = {u["id"]: "back" for u in units}
-        melee = [u for u in units if not u["ranged"]]
-        if units:
-            tank = max(melee or units, key=durability)
+        front = [u for u in units if formation[u["id"]] == "front"]
+        if len(front) >= 2:
+            carry = max(front, key=lambda u: u.get("expected_damage", 0))
+            formation[carry["id"]] = "back"
+        elif units and not front:
+            # 아무도 앞에 없으면 근접 적이 후열을 그대로 친다. 가장 단단한 사람이 선다.
+            tank = max(units, key=lambda u: (u["weight_class"], u["hp_pct"]))
             formation[tank["id"]] = "front"
-        # 근접이 여럿이고 인원이 넉넉하면 둘째 근접도 앞에 세워 전열이 무너지는
-        # 순간을 늦춘다. 치유자는 앞에 세우지 않는다.
-        if len(units) >= 3 and len(melee) >= 2:
-            second = sorted(
-                (u for u in melee if formation[u["id"]] == "back" and not u["can_heal"]),
-                key=durability,
-                reverse=True,
-            )
-            if second and durability(second[0])[0] >= 2:
-                formation[second[0]["id"]] = "front"
 
-        # 집중 목표: 치유자 → 곧 죽일 수 있는 잡졸 → 보스.
+        # 집중 목표: 치유자 → 보스 → 가장 약한 적.
         #
-        # 예전에는 "가장 약한 적"(HP 버킷)이었고, 그래서 보스가 상처를 입는 순간
-        # 계속 보스만 물고 늘어졌다. 그 사이 소환된 수하가 살아남아 매 턴 파티를
-        # 갉아먹었다 — 실측(20시드, 전사 몰빵)에서 감독 ON 이 OFF 보다 나빴다.
-        # 잡졸은 HP 가 낮아 먼저 치우는 편이 받는 피해를 줄인다.
+        # 한때 "곧 죽일 수 있는 잡졸 먼저" 로 두었다. 20시드에서는 그럴듯해
+        # 보였지만 150~200시드가 뒤집었다: 바르가스는 3턴마다 수하를 부르므로
+        # 재계획마다 목표가 수하로 갈아타고(60판 집계 수하 314 / 보스 107),
+        # 보스에게 가는 피해가 63%→44% 로 떨어져 보스 처치가 60판 중 47판에서
+        # 8판이 됐다. 보스가 살아 있는 한 소환은 멈추지 않는다 — 잡졸을 치우는
+        # 이득보다 보스를 늦게 죽이는 손해가 크다(QA 라운드 2).
         focus = None
         if enemies:
             healers = [e for e in enemies if e["can_heal"]]
-            adds = sorted([e for e in enemies if not e["is_boss"]], key=lambda e: e.get("hp", 0))
             bosses = [e for e in enemies if e["is_boss"]]
+            weakest = min(enemies, key=lambda e: e.get("hp", 0))
             if healers and any(u["ranged"] for u in units):
                 focus = healers[0]["id"]
-            elif adds:
-                focus = adds[0]["id"]
             elif bosses:
                 focus = bosses[0]["id"]
             else:
-                focus = enemies[0]["id"]
+                focus = weakest["id"]
 
         focus_name = names.get(focus, focus) if focus else "적"
         directive = {}
@@ -150,9 +147,13 @@ class FakeModel:
             if u["can_heal"]:
                 directive[u["id"]] = "후열에서 다친 아군을 치유하고, 여유가 있으면 축복."
             elif formation[u["id"]] == "front":
-                directive[u["id"]] = f"전열에서 {focus_name}을(를) 집중 공격. 빈사면 방어."
+                directive[u["id"]] = (
+                    f"전열에서 {with_josa(focus_name, '을')} 집중 공격. 빈사면 방어."
+                )
             else:
-                directive[u["id"]] = f"후열에서 {focus_name}을(를) 노린다. 근접당하면 물러선다."
+                directive[u["id"]] = (
+                    f"후열에서 {with_josa(focus_name, '을')} 노린다. 근접당하면 물러선다."
+                )
 
         stuck = "" if can_escape else f" 도주 성공률이 {escape:.0%}라 물러설 수도 없다."
         text = {
@@ -242,7 +243,8 @@ class FakeModel:
             for h in hurt:
                 a = find("SKILL", skill="치유", target=h["id"])
                 if a:
-                    return answer(a, True, f"{h['name']}이(가) 위험하다. 상처를 덮는다.")
+                    who = with_josa(h["name"], "이")
+                    return answer(a, True, f"{who} 위험하다. 상처를 덮는다.")
             bless = skill_actions(lambda m: m["effect"] == "bless")
             if bless and stamina_ratio > 0.6 and "bless" not in my_statuses:
                 return answer(bless[0], True, "다친 사람이 없다. 축복으로 아군의 손을 돕는다.")
@@ -272,14 +274,17 @@ class FakeModel:
             picked = picked or next((a for a in offensive if a.get("target") is None), None)
             picked = picked or offensive[0]
             where = nm(picked.get("target")) if picked.get("target") else "적 전체"
-            return answer(picked, True, f"{picked['skill']}으로 {where}을(를) 노린다.")
+            skill = with_josa(picked["skill"], "으로")
+            return answer(picked, True, f"{skill} {with_josa(where, '을')} 노린다.")
 
         # 순응 — 집중 목표 공격
         if focus and find("ATTACK", target=focus):
-            return answer(find("ATTACK", target=focus), True, f"방침대로 {nm(focus)}을(를) 친다.")
+            target_name = with_josa(nm(focus), "을")
+            return answer(find("ATTACK", target=focus), True, f"방침대로 {target_name} 친다.")
         any_attack = find("ATTACK")
         if any_attack:
-            return answer(any_attack, focus is None, f"{nm(any_attack['target'])}을(를) 친다.")
+            hit = with_josa(nm(any_attack["target"]), "을")
+            return answer(any_attack, focus is None, f"{hit} 친다.")
         if find("DEFEND"):
             return answer(find("DEFEND"), True, "칠 수 없다. 방어한다.")
         return answer(find("WAIT"), True, "지쳤다. 숨을 고른다.")
@@ -326,5 +331,5 @@ class FakeModel:
             "target": chosen.get("target"),
             "skill": chosen.get("skill"),
             "adapt": adapt,
-            "reason": f"{target_name}을(를) 노린다." + adapt_ko.get(adapt or "", ""),
+            "reason": f"{with_josa(target_name, '을')} 노린다." + adapt_ko.get(adapt or "", ""),
         }

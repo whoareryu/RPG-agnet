@@ -6,7 +6,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const r = await backendFetch(`/runs/${encodeURIComponent(id)}/stream`);
     if (!r.ok || !r.body) {
-      return new Response(await r.text(), { status: r.status });
+      // EventSource 는 HTTP 오류를 data 없는 error 로만 알려줘서 화면이 이유를
+      // 못 보여준다. 사유를 SSE 로 흘려 준다(QA 라운드 2).
+      const detail = await r.text();
+      const body = `event: error\ndata: ${JSON.stringify({ error: detail, status: r.status })}\n\nevent: done\ndata: {}\n\n`;
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
     }
     return new Response(r.body, {
       status: 200,

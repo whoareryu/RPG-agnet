@@ -52,13 +52,24 @@ class ReplanState:
         self.environment_changes.clear()
 
 
-def replan_triggers(state: ReplanState, odds_value: float, plan: Plan | None) -> list[Trigger]:
+ADAPT_KO = {
+    "repeat_attacker": "같은 자의 반복 공격",
+    "magic_heavy": "마법 편중",
+    "healing": "반복된 치유",
+    "turtle": "방어 일변도",
+}
+
+
+def replan_triggers(
+    state: ReplanState, odds_value: float, plan: Plan | None, names: dict[str, str] | None = None
+) -> list[Trigger]:
     """이번 턴에 재계획을 부를 이유들. 비어 있으면 그대로 간다."""
     if plan is None or state.triggered_this_turn:
         return []
     out: list[Trigger] = []
     if state.deviations and state.turn - state.last_deviation_replan >= REPLAN_DEVIATION_COOLDOWN:
-        who = ", ".join(dict.fromkeys(state.deviations))
+        n = names or {}
+        who = ", ".join(n.get(x, x) for x in dict.fromkeys(state.deviations))
         out.append(Trigger("deviation", f"{who} 가 방침을 이탈했다"))
     if odds_value <= plan.retreat_threshold:
         # 첫 진입은 1회, 이후 0.1 씩 더 내려갈 때마다.
@@ -70,7 +81,7 @@ def replan_triggers(state: ReplanState, odds_value: float, plan: Plan | None) ->
                 )
             )
     for what in state.adaptations:
-        out.append(Trigger("adaptation", f"보스 적응 감지: {what}"))
+        out.append(Trigger("adaptation", f"적이 읽었다: {ADAPT_KO.get(what, what)}"))
     for what in state.environment_changes:
         out.append(Trigger("environment", what))
     return out

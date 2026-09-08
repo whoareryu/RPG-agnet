@@ -34,14 +34,25 @@ class RunMetrics:
 
 
 def metrics_of(events: Sequence[TraceEvent]) -> RunMetrics:
-    """한 판의 트레이스에서 지표를 뽑는다. 미션이 여럿이면 마지막 미션을 본다."""
+    """한 판의 트레이스에서 지표를 뽑는다.
+
+    결과·턴·생존자는 **마지막 미션**에서, 판단 횟수(이탈·적응·재계획)와 행동
+    분포는 **런 전체**에서 온다. party_size 는 출전 명단 전체라, 미션이 여럿이고
+    1판에서 사망자가 나오면 survival_rate 가 "출전한 사람 중 끝까지 살아남은
+    비율" 을 뜻한다 — 마지막 미션의 파티 크기가 아니다.
+    """
     start = next(e for e in events if e.kind == "run_start")
     end = next(e for e in reversed(events) if e.kind == "mission_end")
     p = end.payload
     party_size = len(start.payload["lineup"])
+
+    # **파티의 행동만 센다.** 보스와 수하도 decision 을 내므로 전부 세면 적의
+    # 행동이 섞인다 — 실측(시드 3, 균등)에서 decision 98개 중 40개(41%)가 적이었고
+    # E3 의 "성향별 행동 분포" 가 그만큼 틀렸다(QA 라운드 2).
+    party = set(start.payload["lineup"])
     actions: dict[str, int] = {}
     for e in events:
-        if e.kind == "decision":
+        if e.kind == "decision" and e.actor in party:
             label = str(e.payload["label"]).split(":")[0]
             actions[label] = actions.get(label, 0) + 1
     return RunMetrics(
@@ -100,3 +111,32 @@ def aggregate(runs: Sequence[RunMetrics]) -> dict[str, Any]:
         # 성향별 행동 분포(E3)의 재료. 여기서 미리 비율로 만들어 둔다.
         "action_share": {k: round(v / acted, 3) for k, v in sorted(action_total.items())},
     }
+
+
+def paired(on: list[str], off: list[str]) -> dict[str, Any]:
+    """같은 시드로 짝지은 비교 (McNemar).
+
+    ON/OFF 가 같은 시드를 쓰므로 짝을 살릴 수 있다. 비율만 보면 30판에서 3판
+    차이가 잡음과 구별되지 않는다 — 짝지으면 같은 판 수로도 훨씬 잘 갈린다.
+    p 는 이항 정확검정(양측)이고 외부 의존성 없이 계산한다.
+    """
+    only_on = sum(1 for a, b in zip(on, off, strict=True) if a == "win" and b != "win")
+    only_off = sum(1 for a, b in zip(on, off, strict=True) if a != "win" and b == "win")
+    return {
+        "games": len(on),
+        "only_on_wins": only_on,
+        "only_off_wins": only_off,
+        "p_value": _binom_two_sided(only_on, only_on + only_off),
+    }
+
+
+def _binom_two_sided(k: int, n: int) -> float:
+    """p=0.5 이항 양측검정. n 이 0 이면 차이가 없다는 뜻이라 1.0."""
+    if n == 0:
+        return 1.0
+    from math import comb
+
+    total = 2**n
+    k = min(k, n - k)
+    tail = sum(comb(n, i) for i in range(k + 1))
+    return round(min(1.0, 2 * tail / total), 4)

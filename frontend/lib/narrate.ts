@@ -4,8 +4,9 @@
 // 원칙: 왼쪽(서사)에서 일어나는 모든 일이 가운데(인스펙터)에서 설명 가능해야 한다.
 // 그러니 서사는 사실만 말하고, 수치는 인스펙터에 맡긴다.
 
+import { withJosa } from "./josa.ts";
 import type { MissionResult, Resolution, TraceEvent } from "./trace.ts";
-import { OUTCOME_KO } from "./trace.ts";
+import { AXIS_KO, OUTCOME_KO } from "./trace.ts";
 
 type Names = Record<string, string>;
 
@@ -36,6 +37,15 @@ const COUNTER_KO: Record<string, string> = {
   summon_faster: "잔해를 더 자주 불러 모은다",
 };
 
+const MASKED_KO: Record<string, string> = {
+  allies: "아군 상태",
+  enemies_basic: "적의 위치",
+  enemy_pattern: "적의 행동 패턴",
+  plan_intent: "단장의 의도",
+  odds: "승산",
+  self: "자기 상태",
+};
+
 const STRATEGY_KO: Record<string, string> = {
   rush: "속공",
   attrition: "지구전",
@@ -46,6 +56,17 @@ const STRATEGY_KO: Record<string, string> = {
 export function nameOf(id: string | null | undefined, names: Names): string {
   if (!id) return "누군가";
   return names[id] ?? id;
+}
+
+/** 자유 텍스트(모델 사유·트리거 설명·보정 메모)에 남은 id 를 이름으로 바꾼다.
+ *
+ * 같은 문자열이 왼쪽(서사)에선 id, 가운데(인스펙터)에선 이름으로 보이면 안 된다. */
+export function withNames(text: string, names: Names): string {
+  let out = text;
+  for (const [id, name] of Object.entries(names)) {
+    out = out.replace(new RegExp(`\\b${id}\\b`, "g"), name);
+  }
+  return out;
 }
 
 export function narrate(e: TraceEvent, names: Names): string {
@@ -79,44 +100,59 @@ export function narrate(e: TraceEvent, names: Names): string {
     }
     case "context": {
       const masked = (p.masked as string[]) ?? [];
-      if (masked.length === 0) return `${who}는 전장을 전부 본다.`;
-      return `${who}는 전장의 일부만 본다 (판단력 ${p.wis_tier}단계).`;
+      const subject = withJosa(who, "는");
+      if (masked.length === 0) return `${subject} 전장을 전부 본다 (지혜 ${p.wis}).`;
+      const hidden = masked.map((m) => MASKED_KO[m] ?? m).join(", ");
+      return `${subject} 전장의 일부만 본다 — ${withJosa(hidden, "이")} 안 보인다 (지혜 ${p.wis}).`;
     }
     case "compliance": {
       const pct = Math.round(Number(p.probability) * 100);
       if (p.verdict === "deviate") return `${who}의 마음이 방침에서 떠난다 (이탈 확률 ${pct}%).`;
-      return `${who}는 방침을 따르기로 한다 (이탈 확률 ${pct}%).`;
+      return `${withJosa(who, "는")} 방침을 따르기로 한다 (이탈 확률 ${pct}%).`;
     }
     case "decision": {
       const label = String(p.label);
       const target = p.target ? nameOf(String(p.target), names) : null;
-      const reason = p.reason ? ` "${p.reason}"` : "";
-      const note = p.note ? ` (${p.note})` : "";
+      const reason = p.reason ? ` "${withNames(String(p.reason), names)}"` : "";
+      const note = p.note ? ` (${withNames(String(p.note), names)})` : "";
+      const subject = withJosa(who, "가");
       if (label.startsWith("SKILL:")) {
         const skill = label.slice(6);
-        return `${who}가 ${skill}${target ? `을(를) ${target}에게` : "을(를)"} 쓴다.${reason}${note}`;
+        // 자기에게 거는 기술은 "적 전체" 로 읽히면 안 된다.
+        const onSelf = p.target === e.actor;
+        const where = onSelf ? "자신에게" : target ? `${withJosa(target, "에게")}` : "";
+        return `${subject} ${where ? where + " " : ""}${withJosa(skill, "을")} 쓴다.${reason}${note}`;
       }
-      if (label.startsWith("MOVE:")) return `${who}가 ${label.endsWith("back") ? "후열로" : "전열로"} 움직인다.${reason}`;
-      if (label === "ATTACK") return `${who}가 ${target}을(를) ${ACTION_KO.ATTACK}.${reason}${note}`;
-      return `${who}가 ${ACTION_KO[label] ?? label}.${reason}`;
+      if (label.startsWith("MOVE:"))
+        return `${subject} ${label.endsWith("back") ? "후열로" : "전열로"} 움직인다.${reason}`;
+      if (label === "ATTACK")
+        return `${subject} ${withJosa(target ?? "적", "을")} ${ACTION_KO.ATTACK}.${reason}${note}`;
+      return `${subject} ${ACTION_KO[label] ?? label}.${reason}`;
     }
     case "resolution": {
       const r = p as unknown as Resolution;
       return narrateResolution(r, names);
     }
     case "boss_adapt": {
-      return `${who}가 ${ADAPT_KO[String(p.pattern)] ?? String(p.pattern)}을 읽었다 — ${COUNTER_KO[String(p.counter)] ?? String(p.counter)}.`;
+      const what = ADAPT_KO[String(p.pattern)] ?? String(p.pattern);
+      const counter = COUNTER_KO[String(p.counter)] ?? String(p.counter);
+      const effect = p.effect as { no_change?: boolean } | undefined;
+      // 아무것도 안 바뀐 적응을 같은 문장으로 세 번 내면 로그가 거짓말이 된다.
+      if (effect?.no_change) return `${withJosa(who, "가")} 다시 ${what}을 확인한다 — 방침 그대로.`;
+      return `${withJosa(who, "가")} ${what}을 읽었다 — ${counter}.`;
     }
     case "replan_trigger":
-      return `${TRIGGER_KO[String(p.trigger)] ?? String(p.trigger)} — ${p.detail}. 단장이 판을 다시 본다.`;
+      return `${TRIGGER_KO[String(p.trigger)] ?? String(p.trigger)} — ${withNames(String(p.detail), names)}. 단장이 판을 다시 본다.`;
     case "abandon": {
       const v = Math.round(Number(p.odds) * 100);
       return `단장이 결정한다: "${p.rationale}" (승산 ${v}%). 전원 철수.`;
     }
     case "flee":
-      return p.success ? `${who}가 전장을 벗어났다.` : `${who}가 빠져나가지 못했다.`;
+      return p.success
+        ? `${withJosa(who, "가")} 전장을 벗어났다.`
+        : `${withJosa(who, "가")} 빠져나가지 못했다.`;
     case "summon":
-      return `갱도가 흔들리고 ${p.name}이(가) 일어선다.`;
+      return `갱도가 흔들리고 ${withJosa(String(p.name), "이")} 일어선다.`;
     case "mission_end": {
       const r = p as unknown as MissionResult;
       const outcome = OUTCOME_KO[r.outcome] ?? r.outcome;
@@ -125,9 +161,11 @@ export function narrate(e: TraceEvent, names: Names): string {
       return `${r.turns}턴 만에 ${outcome}.${dead}${fled}`;
     }
     case "intermission_start":
+      if (p.rejected) return `지시를 받아들이지 못했다 (${String(p.rejected)}). 기본 지시로 간다.`;
+      if (p.awaiting_input) return "야영지. 단주의 지시를 기다린다.";
       return "전투가 끝났다. 용병단은 야영지로 돌아온다.";
     case "directive":
-      return `단주가 ${who}에게 지시한다: ${p.category}.`;
+      return `단주가 ${who}에게 지시한다: ${String(p.label ?? p.category)}.`;
     case "train_compliance": {
       const pct = Math.round(Number(p.probability) * 100);
       return p.verdict === "refuse"
@@ -140,8 +178,10 @@ export function narrate(e: TraceEvent, names: Names): string {
       return String(p.narration ?? `${who}에게 일이 생겼다.`);
     case "param_diff": {
       const delta = p.delta as Record<string, number>;
-      const parts = Object.entries(delta).map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v}`);
-      return `${who}가 변했다: ${parts.join(", ")}.`;
+      const parts = Object.entries(delta).map(
+        ([k, v]) => `${AXIS_KO[k] ?? (k === "fatigue" ? "피로" : k)} ${v > 0 ? "+" : ""}${v}`,
+      );
+      return `${withJosa(who, "가")} 변했다 — ${String(p.cause ?? "")}: ${parts.join(", ")}.`;
     }
     case "growth_points":
       return `단주가 성장 포인트 ${p.granted}점을 받았다.`;
@@ -158,22 +198,26 @@ export function narrate(e: TraceEvent, names: Names): string {
 
 function narrateResolution(r: Resolution, names: Names): string {
   const who = nameOf(r.actor, names);
-  if (r.action === "FLEE") return r.flee_success ? `${who}가 몸을 돌려 달아났다.` : `${who}의 발이 잡혔다.`;
-  if (r.action === "DEFEND") return `${who}가 몸을 낮춘다.`;
-  if (r.action === "WAIT") return `${who}가 숨을 고른다.`;
-  if (r.action.startsWith("MOVE")) return `${who}가 자리를 옮긴다.`;
-  if (r.healed > 0) return `${who}의 손길에 ${nameOf(r.target, names)}의 상처가 ${r.healed}만큼 아문다.`;
+  const subject = withJosa(who, "가");
+  if (r.action === "FLEE") return r.flee_success ? `${subject} 몸을 돌려 달아났다.` : `${who}의 발이 잡혔다.`;
+  if (r.action === "DEFEND") return `${subject} 몸을 낮춘다.`;
+  if (r.action === "WAIT") return `${subject} 숨을 고른다.`;
+  if (r.action.startsWith("MOVE")) return `${subject} 자리를 옮긴다.`;
+  if (r.healed > 0)
+    return `${who}의 손길에 ${nameOf(r.target, names)}의 상처가 ${r.healed}만큼 아문다.`;
   if (r.strikes.length === 0) {
     const skill = r.action.startsWith("SKILL:") ? r.action.slice(6) : r.action;
-    return `${who}의 ${skill}이(가) 전장에 퍼진다.`;
+    // 자기에게 거는 기술(방패 밀치기 등)을 광역기처럼 쓰면 거짓말이 된다.
+    if (r.target === r.actor) return `${subject} ${withJosa(skill, "을")} 스스로에게 건다.`;
+    return `${who}의 ${withJosa(skill, "이")} 전장에 퍼진다.`;
   }
   const parts = r.strikes.map((s) => {
     const t = nameOf(s.target, names);
-    if (!s.hit) return `${t}에게는 빗나갔다`;
+    if (!s.hit) return `${withJosa(t, "에게")}는 빗나갔다`;
     const crit = s.crit ? " 급소를 찔러" : "";
-    const killed = s.killed ? ` — ${t}이(가) 쓰러진다` : "";
-    return `${t}에게${crit} ${s.damage}의 피해${killed}`;
+    const killed = s.killed ? ` — ${withJosa(t, "이")} 쓰러진다` : "";
+    return `${withJosa(t, "에게")}${crit} ${s.damage}의 피해${killed}`;
   });
-  const note = r.notes.length ? ` (${r.notes[0]})` : "";
+  const note = r.notes.length ? ` (${withNames(r.notes[0], names)})` : "";
   return `${who}: ${parts.join(", ")}.${note}`;
 }

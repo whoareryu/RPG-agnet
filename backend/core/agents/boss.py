@@ -6,6 +6,7 @@
 
 from typing import Any
 
+from core.agents.josa import with_josa
 from core.agents.prompts import build_boss_prompt
 from core.agents.schemas import ADAPTATIONS, BOSS_SCHEMA
 from core.battle.state import Battle, Status, available_actions, enemies_of
@@ -192,7 +193,7 @@ def minion_act(battle: Battle, unit_id: str, tracer: Tracer) -> Action:
         for h in hurt:
             cand = Action("SKILL", target=h.id, skill="치유")
             if cand in actions:
-                chosen, reason = cand, f"{h.name} 을 치유한다"
+                chosen, reason = cand, f"{with_josa(h.name, '을')} 치유한다"
                 break
     target: str | None = None
     if foes:
@@ -201,12 +202,13 @@ def minion_act(battle: Battle, unit_id: str, tracer: Tracer) -> Action:
     if chosen is None and target and u.stamina >= u.stamina_max * 0.5:
         for a in actions:
             if a.kind == "SKILL" and a.skill not in ("치유", "축복") and a.target in (target, None):
-                chosen, reason = a, f"{a.skill} 로 {a.target or '전원'} 을 친다"
+                who = battle.units[a.target].name if a.target else "전원"
+                chosen, reason = a, f"{with_josa(a.skill, '으로')} {with_josa(who, '을')} 친다"
                 break
     if chosen is None and target:
         cand = Action("ATTACK", target=target)
         chosen = cand if cand in actions else next((a for a in actions if a.kind == "ATTACK"), None)
-        reason = f"{target} 을 노린다"
+        reason = f"{with_josa(battle.units[target].name, '을')} 노린다"
     if chosen is None:
         chosen = Action("DEFEND") if Action("DEFEND") in actions else Action("WAIT")
         reason = "버틴다"

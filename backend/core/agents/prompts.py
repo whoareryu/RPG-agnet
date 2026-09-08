@@ -16,6 +16,7 @@ import json
 from typing import Any
 
 from core.battle.state import Battle, UnitState, living
+from core.judgment.odds import unit_damage
 from core.rules.combat import flee_chance
 from core.rules.constants import RETREAT_THRESHOLD_DEFAULT, RETREAT_THRESHOLD_RANGE
 from core.rules.disposition import describe
@@ -61,6 +62,10 @@ def build_orchestrator_prompt(
             "ranged": u.weapon.ranged,
             "can_heal": any(s.effect == "heal" for s in u.skills),
             "position": u.position,
+            # 누가 가장 잘 때리는가. 전열이 방패가 되는 전장에서 편성의 핵심은
+            # "가장 잘 때리는 사람을 오래 살리는 것" 이다 — 단장이 그걸 알아야
+            # 판단할 수 있다(QA 라운드 2, 200시드).
+            "expected_damage": round(unit_damage(u, foes, env, battle)[0], 1),
             "disposition": u.disposition.as_dict() if u.disposition else None,
         }
         for u in mine

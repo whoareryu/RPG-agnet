@@ -4,9 +4,17 @@ import { useEffect, useRef } from "react";
 import { narrate } from "@/lib/narrate";
 import type { TraceEvent } from "@/lib/trace";
 
-// 스트림에 문장으로 나오는 종류. 나머지(odds·context·turn_start 등)는 접어 두고
-// 인스펙터에서만 연다 — 24턴이 433줄이 되면 아무도 읽지 않는다.
-const QUIET = new Set(["odds", "context", "turn_start"]);
+// 기본으로 접는 종류. 24턴이 400줄이 되면 아무도 읽지 않는다.
+//
+// 단, **가려진 것이 있는 context 는 접지 않는다** — 지혜 마스킹은 이 프로젝트가
+// 파는 것 중 하나인데, 접어 두면 화면에서 확인할 방법이 0 이 된다(QA 라운드 2).
+const QUIET = new Set(["odds", "turn_start", "context"]);
+
+function isQuiet(e: TraceEvent): boolean {
+  if (e.kind === "context") return ((e.payload.masked as string[]) ?? []).length === 0;
+  if (e.kind === "compliance") return e.payload.verdict === "comply";
+  return QUIET.has(e.kind);
+}
 
 type Props = {
   events: TraceEvent[];
@@ -26,8 +34,7 @@ export default function NarrativeStream({ events, names, selectedSeq, onSelect, 
   return (
     <div className="stream">
       {events.map((e) => {
-        if (!showQuiet && QUIET.has(e.kind) && e.kind !== "turn_start") return null;
-        if (e.kind === "compliance" && e.payload.verdict === "comply") return null; // 순응은 조용하다. 이탈만 문장이 된다.
+        if (!showQuiet && e.kind !== "turn_start" && isQuiet(e)) return null;
         const cls = [
           "stream-item",
           `k-${e.kind}`,

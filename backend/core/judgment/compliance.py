@@ -24,6 +24,7 @@ from core.rules.constants import (
     PRESSURE_HP_WEIGHT,
     PRESSURE_LIFE_WEIGHT,
     PRESSURE_LOSS_WEIGHT,
+    PRESSURE_SCALE_DIVISOR,
 )
 
 Verdict = str  # "comply" | "deviate"
@@ -58,9 +59,19 @@ def allies_lost_ratio(battle: Battle, unit: UnitState) -> float:
 
 
 def deviation_pressure(unit: UnitState, battle: Battle) -> tuple[float, dict[str, float]]:
-    hp_term = PRESSURE_HP_WEIGHT * (1 - unit.hp / unit.hp_max)
-    loss_term = PRESSURE_LOSS_WEIGHT * allies_lost_ratio(battle, unit)
-    life_term = PRESSURE_LIFE_WEIGHT * (1.0 if unit.dependents > 0 else 0.0)
+    """이탈 압력. 성향이 각 항을 **다르게** 늘이고 줄인다.
+
+    위험을 감수하는 사람은 자기 상처를 작게 느끼고, 희생을 받아들이는 사람은
+    동료가 쓰러진 것과 두고 온 가족을 견딘다. 세 축이 같은 계수로 한 스칼라에
+    합쳐지면 축이 구별되지 않는다(QA 라운드 2).
+    """
+    d = unit.disposition
+    risk_scale = 1 - (d.risk / PRESSURE_SCALE_DIVISOR if d else 0)
+    sac_scale = 1 - (d.sacrifice / PRESSURE_SCALE_DIVISOR if d else 0)
+
+    hp_term = PRESSURE_HP_WEIGHT * (1 - unit.hp / unit.hp_max) * risk_scale
+    loss_term = PRESSURE_LOSS_WEIGHT * allies_lost_ratio(battle, unit) * sac_scale
+    life_term = PRESSURE_LIFE_WEIGHT * (1.0 if unit.dependents > 0 else 0.0) * sac_scale
     bd = {"hp": round(hp_term, 3), "allies_lost": round(loss_term, 3), "life": round(life_term, 3)}
     return round(hp_term + loss_term + life_term, 3), bd
 

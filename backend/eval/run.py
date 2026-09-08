@@ -17,7 +17,8 @@ from eval.experiments import EXPERIMENTS
 def main() -> int:
     ap = argparse.ArgumentParser(description="실험 러너")
     ap.add_argument("--experiment", "-e", default="e1", choices=sorted(EXPERIMENTS))
-    ap.add_argument("--seeds", "-n", type=int, default=30)
+    # 30판에서 3판 차이는 잡음이다(QA 라운드 2). 200판이 로컬에서 수십 초다.
+    ap.add_argument("--seeds", "-n", type=int, default=200)
     ap.add_argument("--out", "-o", type=Path, default=None)
     ap.add_argument("--quiet", "-q", action="store_true")
     args = ap.parse_args()
@@ -41,7 +42,7 @@ def _print_table(result: dict[str, Any]) -> None:
         flag = "감독" if result["experiment"] == "e1" else "적응"
         head = f"{'조합':<12} {flag:<5} {'승률':>5} {'후퇴':>5} {'패배':>5} "
         print(head + f"{'생존':>5} {'평균턴':>6} {'최대호출':>7}")
-        print("-" * 60)
+        print("-" * 62)
         for c in result["compositions"]:
             for side in ("on", "off"):
                 a = c[side]
@@ -49,6 +50,13 @@ def _print_table(result: dict[str, Any]) -> None:
                     f"{c['label']:<12} {side.upper():<5} {a['win_rate']:>5.0%} "
                     f"{a['retreat_rate']:>5.0%} {a['loss_rate']:>5.0%} "
                     f"{a['survival_rate']:>5.0%} {a['avg_turns']:>6.1f} {a['max_calls']:>7}"
+                )
+            pr = c.get("paired") or {}
+            if pr:
+                mark = "유의" if pr["p_value"] < 0.05 else "잡음과 구별 안 됨"
+                print(
+                    f"{'':<12} {'짝비교':<5} ON만 이김 {pr['only_on_wins']:>3} · "
+                    f"OFF만 이김 {pr['only_off_wins']:>3} · p={pr['p_value']:.4f} ({mark})"
                 )
     else:
         for axis in result["axes"]:

@@ -10,7 +10,7 @@ E3: 성향별 행동 분포 — 같은 전투, 성향 수치만 교체.
 """
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from adapters.harness.harness import Harness
@@ -22,7 +22,7 @@ from core.rules.dice import SeededDice
 from core.runner import run
 from core.trace.sink import ListSink
 from core.types import Disposition, MissionSpec, RunConfig
-from eval.metrics import aggregate, metrics_of
+from eval.metrics import aggregate, metrics_of, paired
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,14 @@ class Composition:
     label: str
     lineup: tuple[str, ...]
     classes: dict[str, str]
+    # 클래스를 바꿨으면 배분도 바꿔야 한다. 프리셋 배분을 그대로 두면 "마법사
+    # 몰빵" 의 마법사 둘이 지능 8 인 채로 로브를 입은 궁수가 되고, 실험이 재는
+    # 것이 조합인지 장비 페널티인지 갈라지지 않는다(QA 라운드 2).
+    allocations: dict[str, dict[str, int]] = field(default_factory=dict)
 
+
+_WARRIOR = {"str_": 8, "con": 8, "wis": 2}
+_MAGE = {"int_": 10, "wis": 6, "con": 2}
 
 # 기획서 §10.1 의 조합 4종.
 COMPOSITIONS: tuple[Composition, ...] = (
@@ -40,10 +47,15 @@ COMPOSITIONS: tuple[Composition, ...] = (
         "전사 몰빵",
         ("garret", "kyle", "thomas"),
         {"kyle": "warrior", "thomas": "warrior"},
+        {"kyle": _WARRIOR, "thomas": _WARRIOR},
     ),
     Composition("balanced", "균등", ("garret", "elaine", "seraphine"), {}),
     Composition(
-        "mages", "마법사 몰빵", ("seraphine", "kyle", "thomas"), {"kyle": "mage", "thomas": "mage"}
+        "mages",
+        "마법사 몰빵",
+        ("seraphine", "kyle", "thomas"),
+        {"kyle": "mage", "thomas": "mage"},
+        {"kyle": _MAGE, "thomas": _MAGE},
     ),
     Composition("no_healer", "힐러 없음", ("garret", "seraphine", "thomas"), {}),
 )
@@ -57,11 +69,12 @@ def _run_once(
     adaptation: bool,
     missions: tuple[MissionSpec, ...] = MISSIONS_A,
     dispositions: dict[str, Disposition] | None = None,
+    allocations: dict[str, dict[str, int]] | None = None,
 ) -> Any:
     cfg = RunConfig(
         seed=seed,
         lineup=lineup,
-        allocations={},
+        allocations=allocations or {},
         classes=classes,
         genders={},
         orchestrator_on=orchestrator,
@@ -95,12 +108,21 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
     """조합 4종 × 감독 ON/OFF × 시드 N."""
     out = []
     for comp in COMPOSITIONS:
-        cell = {}
+        cell: dict[str, Any] = {}
+        outcomes: dict[str, list[str]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
-                _run_once(s, comp.lineup, comp.classes, orchestrator=on, adaptation=True)
+                _run_once(
+                    s,
+                    comp.lineup,
+                    comp.classes,
+                    orchestrator=on,
+                    adaptation=True,
+                    allocations=comp.allocations,
+                )
                 for s in range(1, seeds + 1)
             ]
+            outcomes[side] = [r.outcome for r in runs]
             cell[side] = aggregate(runs)
             if progress:
                 progress(f"E1 {comp.label} 감독 {side.upper()}: 승률 {cell[side]['win_rate']:.0%}")
@@ -110,6 +132,9 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 "label": comp.label,
                 "lineup": [ROSTER_BY_ID[i].name for i in comp.lineup],
                 **cell,
+                # ON/OFF 가 같은 시드를 쓰므로 짝지어 비교할 수 있다. 비율만 남기면
+                # 그 짝을 잃고, 30판에서 3판 차이는 잡음과 구별되지 않는다(QA 라운드 2).
+                "paired": paired(outcomes["on"], outcomes["off"]),
             }
         )
     return {"experiment": "e1", "seeds": seeds, "model": "fake", "compositions": out}
@@ -119,16 +144,32 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
     """보스 적응 ON/OFF. 같은 시드·같은 조합이라 차이는 적응 하나에서 온다."""
     out = []
     for comp in COMPOSITIONS:
-        cell = {}
+        cell: dict[str, Any] = {}
+        outcomes: dict[str, list[str]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
-                _run_once(s, comp.lineup, comp.classes, orchestrator=True, adaptation=on)
+                _run_once(
+                    s,
+                    comp.lineup,
+                    comp.classes,
+                    orchestrator=True,
+                    adaptation=on,
+                    allocations=comp.allocations,
+                )
                 for s in range(1, seeds + 1)
             ]
+            outcomes[side] = [r.outcome for r in runs]
             cell[side] = aggregate(runs)
             if progress:
                 progress(f"E2 {comp.label} 적응 {side.upper()}: 승률 {cell[side]['win_rate']:.0%}")
-        out.append({"key": comp.key, "label": comp.label, **cell})
+        out.append(
+            {
+                "key": comp.key,
+                "label": comp.label,
+                **cell,
+                "paired": paired(outcomes["on"], outcomes["off"]),
+            }
+        )
     return {"experiment": "e2", "seeds": seeds, "model": "fake", "compositions": out}
 
 
@@ -160,6 +201,7 @@ def e3(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                     orchestrator=True,
                     adaptation=True,
                     dispositions=disp,
+                    allocations=comp.allocations,
                 )
                 for s in range(1, seeds + 1)
             ]

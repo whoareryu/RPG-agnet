@@ -18,6 +18,7 @@ from core.battle.order import turn_order
 from core.battle.resolve import end_turn, resolve
 from core.battle.state import (
     Battle,
+    display_names,
     living,
     outcome,
     unit_from_character,
@@ -215,7 +216,7 @@ def play_mission(
         )
 
         if plan is not None and not battle.retreat_ordered:
-            triggers = replan_triggers(replan, odds_value, plan)
+            triggers = replan_triggers(replan, odds_value, plan, display_names(battle))
             if triggers:
                 for t in triggers:
                     tracer.emit("replan_trigger", {"trigger": t.kind, "detail": t.detail})
@@ -367,6 +368,12 @@ def run_stream(
 def _config_payload(config: RunConfig, members: list[PartyMember]) -> dict[str, Any]:
     return {
         "seed": config.seed,
+        # 유저의 방향 결정을 그대로 싣는다. 예전에는 리플레이가 stats 에서
+        # 배분을 역산하고 성별은 버렸다 — 성별이 조용히 되돌아갔고, 기본
+        # 능력치가 갈라지는 순간(충원·다른 프리셋) 배분도 틀리게 복원된다.
+        "allocations": {k: dict(v) for k, v in config.allocations.items()},
+        "classes": dict(config.classes),
+        "genders": dict(config.genders),
         "model": config.model_name,
         "lineup": list(config.lineup),
         "orchestrator_on": config.orchestrator_on,
@@ -379,6 +386,7 @@ def _config_payload(config: RunConfig, members: list[PartyMember]) -> dict[str, 
                 "id": c.id,
                 "name": c.name,
                 "class": c.char_class,
+                "gender": c.gender,
                 "body": c.body,
                 "stats": c.stats.as_dict(),
                 "disposition": c.disposition.as_dict(),

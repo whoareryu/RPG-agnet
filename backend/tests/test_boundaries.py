@@ -89,9 +89,14 @@ def test_성별은_엔진에_닿지_않는다():
 
     허용되는 곳은 서사 표기(core/agents/narration.py)뿐이다.
     """
-    허용 = {"core/agents/narration.py"}
+    # narration 은 표기를 만들고, runner 는 그 값을 트레이스에 실어 리플레이가
+    # 같은 설정을 복원하게 한다. 둘 다 판단이 아니다 — 규칙·전투·판단 층은 못 읽는다.
+    허용 = {"core/agents/narration.py", "core/runner.py"}
     hits = _속성_접근_파일들("core", "gender")
     assert hits <= 허용, f"서사 표기 밖에서 gender 를 읽는다: {hits - 허용}"
+    금지 = ("core/rules", "core/battle", "core/judgment", "core/intermission")
+    for root in 금지:
+        assert not _속성_접근_파일들(root, "gender"), f"{root} 가 gender 를 읽는다"
 
 
 def test_행운은_판단에_개입하지_않는다():

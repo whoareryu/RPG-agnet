@@ -157,11 +157,22 @@ def unit_from_character(
     )
 
 
+# 소환된 유닛의 이름. 숫자로 끝나면 한국어 조사를 고를 수 없어 화면에
+# "잔해 수하 1이(가)" 가 찍힌다(QA 라운드 2). 한글 서수를 쓴다.
+ORDINALS = ("첫째", "둘째", "셋째", "넷째", "다섯째")
+
+
 def unit_from_enemy(e: EnemyUnitDef, faction: str, suffix: str = "") -> UnitState:
     uid = e.id + suffix
+    ordinal = ""
+    if suffix:
+        n = suffix.strip("_")
+        ordinal = (
+            f" {ORDINALS[int(n) - 1]}" if n.isdigit() and 0 < int(n) <= len(ORDINALS) else f" {n}"
+        )
     return UnitState(
         id=uid,
-        name=e.name + (f" {suffix.strip('_')}" if suffix else ""),
+        name=e.name + ordinal,
         faction=faction,
         stats=e.stats,
         body=e.body,
@@ -271,7 +282,10 @@ def outcome(battle: Battle, end_of_turn: bool = False) -> str | None:
     if not living(battle, battle.enemy):
         return "win"
     if not living(battle, battle.party):
-        return "retreat" if battle.retreat_ordered else "lose"
+        # 후퇴 명령을 내렸어도 한 명도 빠져나오지 못했으면 그건 전멸이다 —
+        # 차트에서 후퇴색으로 칠해지면 "빠져나왔다" 로 읽힌다(QA 라운드 2).
+        escaped = any(u.faction == battle.party and u.fled for u in battle.units.values())
+        return "retreat" if battle.retreat_ordered and escaped else "lose"
     if end_of_turn and battle.turn >= battle.turn_limit:
         return "draw"
     return None

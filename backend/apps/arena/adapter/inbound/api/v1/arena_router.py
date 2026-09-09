@@ -73,6 +73,11 @@ class RunSession:
         # 잔여 횟수는 여기가 센다. core 는 "지금 울렸나" 만 답받는다.
         self.horn_left = HORN_CHARGES
         self.horn_pending = threading.Event()
+        # 뿔피리는 **판 안에서만** 유효하다(기획서 v3 §8.2). 세션 플래그만으로는
+        # mission_end↔인터미션 훅 사이, 그리고 훅이 플래그를 지운 뒤 LLM 이 도는
+        # 몇 초 동안 창이 열린다 — 그때 받은 신호가 다음 판 1턴에 터진다
+        # (QA 2026-09-09 T1·C3·J14, 재현 2회).
+        self.in_battle = threading.Event()
         # 회수 결정 — 끌려간 대원을 다시 데려올 것인가(기획서 v3 §6.8).
         # 화면이 답하지 않으면 미지불이다. 기한을 넘기면 자동 미지불이라는
         # 규칙이 그대로 기본값이 된다.
@@ -84,8 +89,15 @@ class RunSession:
         self.horn_left -= 1
         self.horn_pending.set()
 
-    def horn_signal(self, _turn: int) -> bool:
-        """턴 시작에 core 가 묻는다. 울렸으면 한 번만 참을 준다."""
+    def horn_signal(self, turn: int) -> bool:
+        """턴 시작에 core 가 묻는다. 울렸으면 한 번만 참을 준다.
+
+        1턴이면 이 판이 막 시작한 것이다 — 이전 판에서 넘어온 묵은 신호를
+        여기서 버린다. 러너가 판 경계를 알려 주지 않아도 안전하다.
+        """
+        if turn <= 1 and self.horn_pending.is_set():
+            self.horn_pending.clear()
+            return False
         if self.horn_pending.is_set():
             self.horn_pending.clear()
             return True
@@ -177,6 +189,13 @@ def build_app(
             "free_points": FREE_POINTS,
             "stat_base": STAT_BASE,
             "lineup_size": MISSIONS_A[0].lineup_max,
+            "horn_charges": HORN_CHARGES,
+            # 화면이 미션 이름을 하드코딩하면 콘텐츠가 바뀔 때 조용히 거짓말한다
+            # (QA 2026-09-09 U1·T3 — 로스터가 삭제된 "폐광의 군주" 를 광고했다).
+            "missions": {
+                1: [{"no": m.no, "name": m.name, "enemy": m.enemy.name} for m in MISSIONS_SINGLE],
+                2: [{"no": m.no, "name": m.name, "enemy": m.enemy.name} for m in MISSIONS_A],
+            },
         }
 
     @app.post("/runs", response_model=CreateRunResponse, dependencies=guard)
@@ -251,6 +270,29 @@ def build_app(
         events = list(record.events)
         # 리플레이도 같은 속도로 흐른다 — 데모에서 뿔피리를 누를 수 있어야 한다.
         pace = pace_seconds()
+
+        # **유저 입력도 재생한다**(QA 2026-09-09 J1). 모델 판단만 되감고 뿔피리·회수를
+        # 비워 두면 원본이 「철수」로 끝난 판이 리플레이에서는 「패배」로 끝난다 —
+        # "같은 시드 = 같은 판" 이 유저 입력이 낀 판에서 깨진다.
+        # 재료는 이미 트레이스에 있다: horn 은 turn, recovery 는 member·paid.
+        horn_turns = {(e.mission, e.payload.get("turn")) for e in events if e.kind == "horn"}
+        paid_members = {
+            e.payload.get("member")
+            for e in events
+            if e.kind == "recovery" and e.payload.get("paid")
+        }
+        fired: set[tuple[int, int]] = set()
+
+        def replay_horn(turn: int) -> bool:
+            for m, t in horn_turns:
+                if t == turn and (m, t) not in fired:
+                    fired.add((m, t))
+                    return True
+            return False
+
+        def replay_recovery(ids: list[str], _costs: dict[str, int]) -> set[str]:
+            return {i for i in ids if i in paid_members}
+
         _start(
             session,
             members,
@@ -260,6 +302,8 @@ def build_app(
                 else ReplayModel(events, FakeModel()),
                 FakeModel(),
             ),
+            horn=replay_horn,
+            recovery_fn=replay_recovery,
         )
         return CreateRunResponse(run_id=new_id, seed=cfg.seed, model="replay")
 
@@ -307,7 +351,7 @@ def build_app(
             raise HTTPException(status_code=409, detail="이미 뿔피리가 울렸다")
         # 전투 중 개입이다(기획서 v3 §8.2). 인터미션이나 회수 결정 중에 받으면
         # 신호가 다음 판 첫 턴까지 묵혀 있다가 엉뚱한 자리에서 터진다.
-        if session.awaiting_input.is_set() or session.awaiting_recovery.is_set():
+        if not session.in_battle.is_set():
             raise HTTPException(status_code=409, detail="지금은 전투 중이 아니다")
         session.blow_horn()
         return {"status": "accepted", "horn_left": session.horn_left}
@@ -360,7 +404,13 @@ def build_app(
             raise HTTPException(status_code=404, detail="그런 런이 없다")
         return record
 
-    def _start(session: RunSession, members: Any, factory: Callable[[], DecisionModel]) -> None:
+    def _start(
+        session: RunSession,
+        members: Any,
+        factory: Callable[[], DecisionModel],
+        horn: Any = None,
+        recovery_fn: Any = None,
+    ) -> None:
         def work() -> None:
             try:
                 intermission = _intermission_for(session)
@@ -372,9 +422,10 @@ def build_app(
                     SeededDice,
                     sink=session,
                     intermission=intermission,
-                    horn=session.horn_signal,
-                    recovery=_recovery_for(session),
+                    horn=horn or session.horn_signal,
+                    recovery=recovery_fn or _recovery_for(session),
                     card_pool=CARDS,
+                    gate=lambda on, s=session: s.in_battle.set() if on else s.in_battle.clear(),
                 )
                 try:
                     store.save(record)

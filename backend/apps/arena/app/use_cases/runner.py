@@ -56,6 +56,10 @@ PartyMember = tuple[Character, BuildChoice, str]  # (캐릭터, 빌드, 말투)
 # 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건 호출자의 장부다.
 HornFn = Callable[[int], bool]
 
+# 판 경계 알림 — 전투가 시작/종료할 때 한 번씩. 호출자가 "지금 전투 중인가" 를
+# 알아야 뿔피리 같은 전투 중 개입을 창 밖에서 받지 않는다(기획서 v3 §8.2).
+BattleGateFn = Callable[[bool], None]
+
 # 회수 결정 — 끌려간 대원 id 목록과 각자의 비용을 받고, **지불할 사람**을 돌려준다.
 # 결정하지 않으면(None) 전원 미지불이다 — 기한을 넘기면 자동 미지불(기획서 v3 §6.8).
 RecoveryFn = Callable[[list[str], dict[str, int]], set[str]]
@@ -88,8 +92,9 @@ class RunRecord:
     results: list[MissionResult] = field(default_factory=list)
     # 그것에게는 이름이 없다. 첫 끌려감이 붙인다(기획서 v3 §8.5).
     boss_title: str | None = None
-    # 회수하지 않아 굴에 남은 사람들. 「섭식」 학습 카드의 재료다(기획서 v3 §8.4).
-    forsaken: tuple[str, ...] = ()
+    # 회수하지 않아 굴에 남은 사람들 (id, 병과). 「섭식」 학습 카드의 재료다(§8.4).
+    # 병과를 들고 다니는 이유: 그것이 배운 것은 사람이 아니라 그 병과를 상대하는 법이다.
+    forsaken: tuple[tuple[str, str], ...] = ()
 
 
 class _Collect:
@@ -167,6 +172,7 @@ def _cards_for(
     record: "RunRecord",
     history: list[ActionRecord],
     pool: tuple[Any, ...],
+    members: list[PartyMember],
 ) -> list[tuple[Any, dict[str, Any]]]:
     """보스전 앞에서만 카드를 뽑는다. 일반전은 카드를 안 쓴다.
 
@@ -176,7 +182,10 @@ def _cards_for(
     slots = CARD_SLOTS.get(mission.casualty_tier, 0)
     if not slots or not pool:
         return []
-    return choose_cards(history, set(), record.forsaken, slots, pool)
+    # 실제 원거리 대원을 센다. 예전에는 빈 집합을 박아 둬서 「사거리」 카드가
+    # 영원히 안 나왔다 — 카드 풀 3장 중 1장이 죽은 코드였다(QA 2026-09-09 C1·J4).
+    ranged = {c.id for c, build, _ in members if build.weapon.ranged}
+    return choose_cards(history, ranged, record.forsaken, slots, pool)
 
 
 def _apply_cards(battle: Battle, cards: list[tuple[Any, dict[str, Any]]], tracer: Tracer) -> None:
@@ -190,9 +199,21 @@ def _apply_cards(battle: Battle, cards: list[tuple[Any, dict[str, Any]]], tracer
         applied: dict[str, Any] = {}
         if card.effect == "focus":
             대상 = why.get("member")
+            if 대상 not in battle.units and why.get("char_class"):
+                # 굴에 두고 온 사람은 정의상 이 판에 없다. 그것이 배운 것은 그
+                # 사람 자체가 아니라 **그 병과를 상대하는 법**이다 — 지금 그
+                # 자리에 선 사람을 노린다(QA 2026-09-09 J5·T5).
+                같은_병과 = [
+                    u.id
+                    for u in battle.units.values()
+                    if u.faction == battle.party and u.char_class == why["char_class"] and u.alive
+                ]
+                if 같은_병과:
+                    대상 = 같은_병과[0]
+                    applied = {"inherited_from": why.get("member")}
             if 대상 in battle.units:
                 battle.boss_focus = 대상
-                applied = {"field": "boss_focus", "after": 대상}
+                applied = {**applied, "field": "boss_focus", "after": 대상}
         elif card.effect == "ranged_block":
             맞은_사람 = [
                 u.id for u in battle.units.values() if u.faction == battle.party and u.weapon.ranged
@@ -252,6 +273,7 @@ def play_mission(
     boss_title: str | None = None,
     cards: list[tuple[Any, dict[str, Any]]] | None = None,
     res_history: list[ActionRecord] | None = None,
+    gate: BattleGateFn | None = None,
 ) -> MissionResult:
     battle = setup_battle(mission, members, seed, adaptation_on, boss_title)
     tracer.mission = mission.no
@@ -293,6 +315,9 @@ def play_mission(
     # tracer 가 아직 이전 판을 가리켜 이벤트가 엉뚱한 회차를 달고 나간다.
     if cards:
         _apply_cards(battle, cards, tracer)
+
+    if gate is not None:
+        gate(True)
 
     plan: Plan | None = None
     plans = 0
@@ -417,6 +442,8 @@ def play_mission(
         plans=plans,
         abandoned=abandoned,
     )
+    if gate is not None:
+        gate(False)
     tracer.emit("mission_end", res)
     # 다음 보스전이 이 기록을 읽어 카드를 뽑는다(기획서 v3 §8.4).
     if res_history is not None:
@@ -445,6 +472,7 @@ def run(
     horn: HornFn | None = None,
     recovery: RecoveryFn | None = None,
     card_pool: tuple[Any, ...] = (),
+    gate: BattleGateFn | None = None,
 ) -> RunRecord:
     collect = _Collect(sink)
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
@@ -466,8 +494,9 @@ def run(
             seed=config.seed,
             horn=horn,
             boss_title=record.boss_title,
-            cards=_cards_for(mission, record, 지난_기록, card_pool),
+            cards=_cards_for(mission, record, 지난_기록, card_pool, members),
             res_history=지난_기록,
+            gate=gate,
         )
         record.results.append(res)
 
@@ -484,7 +513,10 @@ def run(
             unpaid = tuple(cid for cid in res.taken if cid not in 지불)
             res = replace(res, recovery_paid=paid, recovery_unpaid=unpaid)
             record.results[-1] = res
-            record.forsaken = record.forsaken + unpaid
+            남은_사람 = {c.id: c for c, _, _ in members}
+            record.forsaken = record.forsaken + tuple(
+                (cid, 남은_사람[cid].char_class) for cid in unpaid if cid in 남은_사람
+            )
             for cid in res.taken:
                 tracer.emit(
                     "recovery",

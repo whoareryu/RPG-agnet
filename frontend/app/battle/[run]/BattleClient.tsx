@@ -23,7 +23,7 @@ export default function BattleClient({ runId }: { runId: string }) {
   const [follow, setFollow] = useState(true);
   const [showQuiet, setShowQuiet] = useState(false);
   const [sentFor, setSentFor] = useState<number[]>([]);
-  const [recoverySent, setRecoverySent] = useState(false);
+  const [recoverySentFor, setRecoverySentFor] = useState<number[]>([]);
   const seen = useRef(new Set<number>());
 
   useEffect(() => {
@@ -84,12 +84,34 @@ export default function BattleClient({ runId }: { runId: string }) {
   }, [events]);
 
   // 굴로 끌려간 사람들 — 회수 결정을 받아야 한다(기획서 v3 §6.8).
-  // 이미 결정을 보냈거나 판이 끝났으면 묻지 않는다.
-  const taken = useMemo(
-    () => events.filter((e) => e.kind === "casualty" && e.payload.verdict === "taken"),
+  //
+  // 조건이 까다로운 이유(QA 2026-09-09 U7·T8·U14): 끝난 런을 다시 열면 정적
+  // 스트림이 casualty 를 다시 흘려 패널이 되살아나고, 눌러도 409/404 인 막다른
+  // 곳이 된다. 그리고 결정은 **판마다** 받으므로 런 단위 불리언으로는 2판째
+  // 끌려감을 물어보지 못한다.
+  const lastMission = useMemo(
+    () => events.findLast((e) => e.kind === "mission_start")?.mission ?? null,
     [events],
   );
-  const askRecovery = taken.length > 0 && !recoverySent && status !== "error";
+  const taken = useMemo(
+    () =>
+      events.filter(
+        (e) =>
+          e.kind === "casualty" && e.payload.verdict === "taken" && e.mission === lastMission,
+      ),
+    [events, lastMission],
+  );
+  // 백엔드가 결정을 기록했으면(recovery 이벤트) 더는 묻지 않는다 — 재열람·리플레이가 이걸로 해결된다.
+  const decided = useMemo(
+    () => events.some((e) => e.kind === "recovery" && e.mission === lastMission),
+    [events, lastMission],
+  );
+  const askRecovery =
+    status === "live" &&
+    taken.length > 0 &&
+    !decided &&
+    lastMission !== null &&
+    !recoverySentFor.includes(lastMission);
 
   // 보스전 시작에 펼쳐진 학습 카드(기획서 v3 §8.4). 마지막 것이 지금 판의 것이다.
   const cards = useMemo(() => events.findLast((e) => e.kind === "cards") ?? null, [events]);
@@ -118,7 +140,13 @@ export default function BattleClient({ runId }: { runId: string }) {
             <input type="checkbox" checked={showQuiet} onChange={(e) => setShowQuiet(e.target.checked)} />
             전부 보기
           </label>
-          <HornButton runId={runId} live={status === "live"} />
+          <HornButton
+            runId={runId}
+            live={status === "live"}
+            // 인터미션·회수 대기 중에는 백엔드가 거절한다. 눌러 보고 튕기기
+            // 전에 이유를 보여 준다(QA 2026-09-09 U6).
+            reason={awaiting ? "야영지다 — 전투 중에만 분다" : askRecovery ? "회수를 먼저 정한다" : null}
+          />
           {runEnd && (
             <Link className="btn btn-sm btn-primary" href={`/result/${runId}`}>
               결과 보기 →
@@ -151,7 +179,9 @@ export default function BattleClient({ runId }: { runId: string }) {
           runId={runId}
           taken={taken}
           names={names}
-          onSent={() => setRecoverySent(true)}
+          onSent={() =>
+            setRecoverySentFor((cur) => (lastMission === null ? cur : [...cur, lastMission]))
+          }
         />
       )}
 

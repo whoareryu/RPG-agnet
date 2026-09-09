@@ -45,7 +45,7 @@ def pattern_metrics(history: list[ActionRecord], ranged_ids: set[str]) -> dict[s
 def choose_cards(
     history: list[ActionRecord],
     ranged_ids: set[str],
-    forsaken: tuple[str, ...],
+    forsaken: tuple[tuple[str, str], ...],
     slots: int,
     pool: tuple[CardDef, ...] = (),
 ) -> list[Chosen]:
@@ -60,7 +60,10 @@ def choose_cards(
 
     if forsaken and "devoured" in by_key:
         card = by_key["devoured"]
-        out.append((card, {"member": forsaken[0], "source": card.source}))
+        # 병과를 함께 싣는다 — 두고 온 사람은 이 판에 없으므로, 그것이 배운 것을
+        # 지금 그 자리에 선 사람에게 건다(QA 2026-09-09 J5).
+        member, char_class = forsaken[0]
+        out.append((card, {"member": member, "char_class": char_class, "source": card.source}))
 
     if m["top_contributor"] and "pillar" in by_key:
         card = by_key["pillar"]

@@ -28,6 +28,9 @@ export type PresetResponse = {
   free_points: number;
   stat_base: number;
   lineup_size: number;
+  horn_charges: number;
+  // 미션 이름을 화면이 하드코딩하지 않는다 — 콘텐츠가 바뀌면 화면도 같이 바뀐다.
+  missions: Record<string, { no: number; name: string; enemy: string }[]>;
 };
 
 // 로스터 화면(기획서 §4.1 [2]관찰 → [3]방향 결정 → 출전 조합). A단계는 프리셋 5 + 재분배.
@@ -47,7 +50,10 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
   const [orchestrator, setOrchestrator] = useState(true);
   const [adaptation, setAdaptation] = useState(true);
   const [seed, setSeed] = useState<string>("");
-  const [missions, setMissions] = useState<1 | 2>(1);
+  // 기본이 2판이다. 1판은 직전 기록이 없어 학습 카드가 구조적으로 0장이고,
+  // 끌려감·보스 호칭도 안 나온다 — 링크로 들어온 사람이 개편의 심장을 못 본다
+  // (QA 2026-09-09 U4).
+  const [missions, setMissions] = useState<1 | 2>(2);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,8 +147,11 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div className="stack" style={{ gap: 2 }}>
             <div className="card-kicker">
-            출전 · {missions === 1 ? "폐광의 군주" : "늪지의 구울 → 인터미션 → 폐광의 군주"} (최대{" "}
-            {preset.lineup_size}명)
+            출전 ·{" "}
+            {(preset.missions?.[String(missions)] ?? [])
+              .map((m) => `${m.name}(${m.enemy})`)
+              .join(missions === 2 ? " → 인터미션 → " : " ")}{" "}
+            (최대 {preset.lineup_size}명)
           </div>
             <div className="row small">
               {lineup.length === 0 ? (
@@ -190,6 +199,12 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
             서버가 거절했다: {error}
           </p>
         )}
+        {/* 뿔피리를 처음 보는 사람이 전투 화면에서 처음 만나면 뭐가 되는지 모른다
+            (QA 2026-09-09 U5). 출정 전에 한 줄로 알려 준다. */}
+        <p className="small" style={{ margin: 0 }}>
+          <strong>전투가 시작되면 당신이 할 수 있는 일은 뿔피리 {preset.horn_charges ?? 3}번뿐이다.</strong>{" "}
+          불면 전원 살아 나오지만 목표는 실패하고 보수는 없다. 불지 않으면 중대장이 스스로 물러날지 판단한다.
+        </p>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || problems.length > 0} onClick={start}>
             {busy ? "출정 준비 중…" : "출정 →"}

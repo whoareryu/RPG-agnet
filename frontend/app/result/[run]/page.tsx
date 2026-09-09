@@ -1,7 +1,7 @@
 import Link from "next/link";
 import BackendDown from "@/components/BackendDown";
 import { backendFetch, BackendDown as BackendDownError } from "@/lib/backend";
-import { buildNameMap, OUTCOME_KO, type MissionResult, type TraceEvent } from "@/lib/trace";
+import { buildNameMap, GRADE_KO, OUTCOME_KO, type MissionResult, type TraceEvent } from "@/lib/trace";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +28,48 @@ export default async function ResultPage({ params }: { params: Promise<{ run: st
   return (
     <main className="page page-narrow stack" style={{ gap: 16 }}>
       <div className="card-kicker">결산</div>
-      <h1>{results.map((r) => OUTCOME_KO[r.outcome]).join(" · ") || "진행 중"}</h1>
+      <h1>
+        {(() => {
+        const named = events.findLast((e) => e.kind === "boss_named");
+        return named ? (
+          <p className="small" style={{ margin: 0 }}>
+            대원들은 그것을 <strong>「{String(named.payload.after)}」</strong>이라 부른다.
+          </p>
+        ) : null;
+      })()}
+      {results.map((r) => (r.grade ? GRADE_KO[r.grade] : OUTCOME_KO[r.outcome])).join(" · ") ||
+          "진행 중"}
+      </h1>
+      {(() => {
+        const named = events.findLast((e) => e.kind === "boss_named");
+        return named ? (
+          <p className="small" style={{ margin: 0 }}>
+            대원들은 그것을 <strong>「{String(named.payload.after)}」</strong>이라 부른다.
+          </p>
+        ) : null;
+      })()}
       {results.map((r) => (
         <div key={r.no} className="card" style={{ gap: 8 }}>
           <div className="row">
-            <span className={`tag ${r.outcome === "win" ? "tag-ok" : r.outcome === "retreat" ? "tag-warn" : "tag-accent"}`}>{OUTCOME_KO[r.outcome]}</span>
+            <span
+              className={`tag ${
+                r.grade === "full_success" || r.grade === "success"
+                  ? "tag-ok"
+                  : r.grade === "withdraw"
+                    ? "tag-warn"
+                    : "tag-accent"
+              }`}
+            >
+              {r.grade ? GRADE_KO[r.grade] : OUTCOME_KO[r.outcome]}
+            </span>
             <span className="small">{r.turns}턴</span>
-            {r.abandoned && <span className="tag tag-outline">단장이 포기를 결정</span>}
+            {r.abandoned && <span className="tag tag-outline">중대장이 포기를 결정</span>}
+            {events.some((e) => e.kind === "horn" && e.mission === r.no) && (
+              <span className="tag tag-outline">단주가 뿔피리를 불었다</span>
+            )}
+            {r.grade === "withdraw" && (
+              <span className="faint small">물러난 판은 실패가 아니다</span>
+            )}
           </div>
           <table className="kv">
             <tbody>
@@ -47,9 +82,35 @@ export default async function ResultPage({ params }: { params: Promise<{ run: st
                 <td>{r.fled.map((s) => names[s] ?? s).join(", ") || "없음"}</td>
               </tr>
               <tr>
-                <th>쓰러짐</th>
+                <th>부상</th>
+                <td>{(r.injured ?? []).map((s) => names[s] ?? s).join(", ") || "없음"}</td>
+              </tr>
+              <tr>
+                <th>굴에 끌려감</th>
+                <td>
+                  {(r.taken ?? []).length === 0
+                    ? "없음"
+                    : (r.taken ?? []).map((s) => names[s] ?? s).join(", ")}
+                </td>
+              </tr>
+              <tr>
+                <th>사망</th>
                 <td>{r.dead.map((s) => names[s] ?? s).join(", ") || "없음"}</td>
               </tr>
+              {((r.recovery_paid ?? []).length > 0 || (r.recovery_unpaid ?? []).length > 0) && (
+                <tr>
+                  <th>회수 결정</th>
+                  <td>
+                    {(r.recovery_paid ?? []).length > 0 && (
+                      <>되찾기로 함: {(r.recovery_paid ?? []).map((s) => names[s] ?? s).join(", ")} </>
+                    )}
+                    {(r.recovery_unpaid ?? []).length > 0 && (
+                      <>굴에 두고 옴: {(r.recovery_unpaid ?? []).map((s) => names[s] ?? s).join(", ")}</>
+                    )}
+                    <div className="faint small">되찾기는 다음 계약에서 처리된다(B단계)</div>
+                  </td>
+                </tr>
+              )}
               <tr>
                 <th>모델 호출</th>
                 <td>{r.calls_used} (상한 300)</td>

@@ -8,7 +8,7 @@ export default function BackendDown({ detail }: { detail?: string }) {
           <span className="card-title">백엔드에 닿지 못했습니다</span>
         </div>
         <p className="small muted">
-          런을 돌리는 서버가 꺼져 있습니다. 로컬이라면 <code>cd backend && uv run uvicorn api.main:create_app --factory --port 8000</code>{" "}
+          런을 돌리는 서버가 꺼져 있습니다. 로컬이라면 <code>cd backend && uv run uvicorn apps.arena.adapter.inbound.api.v1.arena_router:create_app --factory --port 8000</code>{" "}
           으로 켜고 새로고침하세요.
         </p>
         {detail && <p className="small faint mono">{detail}</p>}

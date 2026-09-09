@@ -352,7 +352,7 @@ def test_결정하지_않으면_미지불로_영구_상실이다():
     rec = _taken_run()
     res = next(r for r in rec.results if r.taken)
     assert res.recovery_unpaid == res.taken and res.recovery_paid == ()
-    assert set(rec.forsaken) == set(res.taken), "미지불이 「섭식」 대상으로 남지 않았다"
+    assert {m for m, _ in rec.forsaken} == set(res.taken), "미지불이 「섭식」 대상으로 남지 않았다"
 
 
 def test_지불하면_섭식_대상에서_빠진다():
@@ -420,3 +420,47 @@ def test_같은_시드는_같은_카드를_낸다():
     a = [e for e in _card_run().events if e.kind == "cards"][0].payload["cards"]
     b = [e for e in _card_run().events if e.kind == "cards"][0].payload["cards"]
     assert [c["key"] for c in a] == [c["key"] for c in b]
+
+
+def test_원거리_편성이면_사거리_카드가_나온다():
+    """QA 2026-09-09 C1·J4 — `ranged_ids` 에 빈 집합이 박혀 있어 「사거리」가
+    영원히 안 나왔다. 단위 테스트는 인자를 직접 넘겨서 못 잡았다.
+
+    러너를 **통과하는** 경로로 잰다.
+    """
+    # 토마(장궁)·오드(나팔) 가 원거리다.
+    rec = _card_run(seed=3, lineup=("thoma", "aude", "martin"))
+    cards = [e for e in rec.events if e.kind == "cards"][0].payload["cards"]
+    keys = {c["key"] for c in cards}
+    assert "range" in keys, f"원거리 둘을 내보냈는데 「사거리」가 없다: {keys}"
+    사거리 = next(c for c in cards if c["key"] == "range")
+    assert 사거리["evidence"]["count"] >= 2
+    assert 사거리["applied"], "「사거리」가 아무것도 안 했다"
+
+
+def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건다():
+    """QA 2026-09-09 J5·T5 — `forsaken` 은 정의상 이 판에 없는 사람이라
+    `대상 in battle.units` 가 항상 거짓이었다. 100% 무효인데 화면은
+    "배웠다" 고 단언했다.
+
+    그것이 배운 것은 사람이 아니라 **그 병과를 상대하는 법**이다.
+    """
+    from apps.arena.adapter.outbound.sinks.list_sink import ListSink
+    from apps.arena.app.use_cases.runner import _apply_cards, setup_battle
+    from apps.arena.domain.entities.trace_event import Tracer
+    from apps.arena.domain.services.judgment.cards import choose_cards
+    from content.cards import CARDS
+    from content.missions import MISSION_JUVENILE_BOSS
+
+    members = build_party(_config(lineup=("thoma", "aude", "martin")))
+    b = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True)
+    sink = ListSink()
+    tracer = Tracer("t", sink, clock=lambda: "T")
+    # 굴에 두고 온 장궁병 — 이 판에 없다. 그런데 토마가 같은 병과로 서 있다.
+    cards = choose_cards([], set(), (("someone", "archer"),), 3, CARDS)
+    _apply_cards(b, cards, tracer)
+    펼친 = sink.events[-1].payload["cards"]
+    섭식 = next(c for c in 펼친 if c["key"] == "devoured")
+    assert 섭식["applied"], "섭식이 여전히 무효다"
+    assert 섭식["applied"]["after"] == "thoma"
+    assert 섭식["applied"]["inherited_from"] == "someone"

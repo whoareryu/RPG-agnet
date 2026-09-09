@@ -324,3 +324,44 @@ def test_이미_울린_뿔피리는_또_받지_않는다(client):
     second = client.post(f"/runs/{run_id}/horn")
     assert second.status_code == 409
     assert "이미" in second.json()["detail"] or "전투 중이 아니다" in second.json()["detail"]
+
+
+def test_전투_중이_아니면_뿔피리를_받지_않는다(client):
+    """QA 2026-09-09 T1 — 인터미션 훅이 플래그를 먼저 지우고 LLM 을 돌려
+    그 사이 창으로 들어온 신호가 다음 판 1턴에 터졌다(재현 2회).
+
+    이제 판 경계를 러너가 알려 준다(BattleGateFn). 판이 끝난 뒤엔 못 분다.
+    """
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 5}).json()[
+        "run_id"
+    ]
+    _wait_done(client, run_id)
+    r = client.post(f"/runs/{run_id}/horn")
+    assert r.status_code == 409
+    assert "끝난" in r.json()["detail"] or "전투 중이 아니다" in r.json()["detail"]
+
+
+def test_뿔피리_세_번을_쓰면_네_번째는_거부된다():
+    """QA 2026-09-09 C5 — HTTP 로는 한 판에 한 번밖에 못 불어 상한 분기를
+    어떤 테스트도 지나지 않았다. 세션을 직접 돌려 단위로 잰다.
+    """
+    from apps.arena.adapter.inbound.api.v1.arena_router import RunSession
+    from apps.arena.domain.constants.balance import HORN_CHARGES
+
+    s = RunSession("r", None)  # type: ignore[arg-type]
+    s.in_battle.set()
+    for i in range(HORN_CHARGES):
+        assert s.horn_left == HORN_CHARGES - i
+        s.blow_horn()
+        assert s.horn_signal(5) is True  # 판 중간 턴 — 신호가 닿는다
+    assert s.horn_left == 0
+
+
+def test_판이_바뀌면_묵은_뿔피리_신호를_버린다():
+    """1턴은 판이 막 시작한 것이다 — 이전 판에서 넘어온 신호를 여기서 버린다."""
+    from apps.arena.adapter.inbound.api.v1.arena_router import RunSession
+
+    s = RunSession("r", None)  # type: ignore[arg-type]
+    s.blow_horn()
+    assert s.horn_signal(1) is False, "묵은 신호가 다음 판 1턴에 터졌다"
+    assert s.horn_signal(2) is False, "버린 신호가 되살아났다"

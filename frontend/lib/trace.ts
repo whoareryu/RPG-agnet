@@ -97,6 +97,23 @@ export type MissionResult = {
   calls_used: number;
   plans: number;
   abandoned: boolean;
+  // v3 — 쓰러짐 3분기(§6.0) · 결과 5등급(§7.1b) · 회수 결정(§6.8).
+  injured?: string[];
+  taken?: string[];
+  grade?: Grade;
+  recovery_paid?: string[];
+  recovery_unpaid?: string[];
+};
+
+/** 결과 5등급 — 「철수」가 벌점이 아닌 것이 핵심이다(기획서 v3 §7.1b). */
+export type Grade = "full_success" | "success" | "withdraw" | "failure" | "disaster";
+
+export const GRADE_KO: Record<Grade, string> = {
+  full_success: "완전 성공",
+  success: "성공",
+  withdraw: "철수",
+  failure: "실패",
+  disaster: "참사",
 };
 
 export function isKind(k: string): k is Kind {

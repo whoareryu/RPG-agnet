@@ -43,7 +43,7 @@
 ```bash
 # 백엔드
 cd backend && uv sync --dev
-uv run uvicorn api.main:create_app --factory --port 8000
+uv run uvicorn apps.arena.adapter.inbound.api.v1.arena_router:create_app --factory --port 8000
 
 # 화면 (다른 터미널)
 cd frontend && npm ci

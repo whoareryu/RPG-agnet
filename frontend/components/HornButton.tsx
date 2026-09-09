@@ -14,8 +14,19 @@ const CHARGES = 3;
  * 세 번인 이유는 설정이 아니라 설계다. 무한이면 유저가 조종하는 게임이 되고,
  * 0 이면 관전이 된다. 세 번이면 매 판 "지금인가" 를 묻게 된다.
  */
-export default function HornButton({ runId, live }: { runId: string; live: boolean }) {
-  const [left, setLeft] = useState(CHARGES);
+export default function HornButton({
+  runId,
+  live,
+  charges = CHARGES,
+  reason,
+}: {
+  runId: string;
+  live: boolean;
+  charges?: number;
+  /** 지금 못 부는 이유. 있으면 버튼이 잠기고 그대로 보여 준다. */
+  reason?: string | null;
+}) {
+  const [left, setLeft] = useState(charges);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -41,6 +52,7 @@ export default function HornButton({ runId, live }: { runId: string; live: boole
   };
 
   const spent = left <= 0;
+  const 잠김 = !live || spent || Boolean(reason);
   return (
     <div className="stack" style={{ gap: 6 }}>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
@@ -54,7 +66,7 @@ export default function HornButton({ runId, live }: { runId: string; live: boole
       {!confirming ? (
         <button
           className="btn btn-sm"
-          disabled={!live || spent || busy}
+          disabled={잠김 || busy}
           onClick={() => setConfirming(true)}
           title={
             spent
@@ -62,7 +74,7 @@ export default function HornButton({ runId, live }: { runId: string; live: boole
               : "불면 즉시 이탈한다. 전멸은 피하지만 목표는 실패하고 보수는 없다"
           }
         >
-          {spent ? "다 썼다" : "뿔피리를 분다"}
+          {spent ? "다 썼다" : reason ? "지금은 못 분다" : "뿔피리를 분다"}
         </button>
       ) : (
         <div className="stack" style={{ gap: 6 }}>
@@ -81,6 +93,10 @@ export default function HornButton({ runId, live }: { runId: string; live: boole
         </div>
       )}
 
+      {/* 툴팁은 모바일에 없다. 상시 캡션으로 둔다(QA 2026-09-09 U5). */}
+      <p className="small faint" style={{ margin: 0, maxWidth: 220 }}>
+        {reason ?? "불면 전원 생환 · 목표 실패 · 보수 없음"}
+      </p>
       {note && (
         <p className="small faint" style={{ margin: 0 }} role="status">
           {note}

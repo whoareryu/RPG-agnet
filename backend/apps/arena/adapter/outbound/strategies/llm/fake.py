@@ -26,6 +26,13 @@ def parse_context(prompt: str) -> dict[str, Any]:
     return json.loads(prompt[start + len(CTX_OPEN) : end])
 
 
+# 적이 이만큼 이상이면 광역이 지목보다 낫다. 전에는 지목을 먼저 골라 광역
+# 기술이 단일 대상으로 바뀌었고, 행동당 타격이 2.43 → 1.19 로 떨어졌다.
+# 감독 OFF 는 지목이 없어 우연히 광역을 골랐고, 그래서 E1 이 "감독은 해롭다"
+# 고 말했다(QA 재검 2026-09-09 R21).
+AOE_MIN_TARGETS = 3
+
+
 class FakeModel:
     name = "fake"
 
@@ -129,11 +136,20 @@ class FakeModel:
         # 보스에게 가는 피해가 63%→44% 로 떨어져 보스 처치가 60판 중 47판에서
         # 8판이 됐다. 보스가 살아 있는 한 소환은 멈추지 않는다 — 잡졸을 치우는
         # 이득보다 보스를 늦게 죽이는 손해가 크다(QA 라운드 2).
+        # **닿는 적 안에서만 지목한다.** 근접은 전열이 살아 있는 한 후열에 못
+        # 닿는데(resolve.py 의 reachable) "가장 약한 적" 이 대개 후열의 투석수라,
+        # 지목을 따르려던 근접 대원의 타격이 통째로 되돌려졌다 — 30시드 미션 7
+        # 에서 264회. 그래서 감독 ON 이 파티 피해를 11,638 → 5,573 으로 **반토막**
+        # 냈고, E1 이 "감독은 나쁜 조합에서 유의하게 해롭다" 고 말했다
+        # (QA 재검 2026-09-09 R21, A/B: 완주 2% → 32%).
         focus = None
         if enemies:
-            healers = [e for e in enemies if e["can_heal"]]
-            bosses = [e for e in enemies if e["is_boss"]]
-            weakest = min(enemies, key=lambda e: e.get("hp", 0))
+            근접만 = not any(u["ranged"] for u in units)
+            전열 = [e for e in enemies if e.get("position") == "front"]
+            닿는_적 = 전열 if (근접만 and 전열) else enemies
+            healers = [e for e in 닿는_적 if e["can_heal"]]
+            bosses = [e for e in 닿는_적 if e["is_boss"]]
+            weakest = min(닿는_적, key=lambda e: e.get("hp", 0))
             if healers and any(u["ranged"] for u in units):
                 focus = healers[0]["id"]
             elif bosses:
@@ -272,8 +288,17 @@ class FakeModel:
         # 순응 — 피해 기술. 집중 목표가 있으면 그쪽으로.
         offensive = skill_actions(lambda m: m["offensive"])
         if offensive and stamina_ratio >= 0.5:
-            picked = next((a for a in offensive if a.get("target") == focus), None)
-            picked = picked or next((a for a in offensive if a.get("target") is None), None)
+            # **적이 셋 이상이면 광역이 지목보다 낫다.** 전에는 지목을 먼저 골라
+            # 광역 기술이 단일 대상으로 바뀌었고, 행동당 타격이 2.43 → 1.10 으로
+            # 떨어졌다(30시드 미션 7 실측). 지목은 적이 적을 때의 규칙이다.
+            광역 = next((a for a in offensive if a.get("target") is None), None)
+            # 단원 컨텍스트에는 적 목록이 없다(가시성 마스킹 때문이다). **지금
+            # 칠 수 있는 적**의 수는 available 의 ATTACK 대상 수가 말해 준다.
+            닿는_적 = {a.get("target") for a in available if a["kind"] == "ATTACK"}
+            여럿 = len(닿는_적) >= AOE_MIN_TARGETS
+            picked = 광역 if (여럿 and 광역) else None
+            picked = picked or next((a for a in offensive if a.get("target") == focus), None)
+            picked = picked or 광역
             picked = picked or offensive[0]
             where = nm(picked.get("target")) if picked.get("target") else "적 전체"
             skill = with_josa(picked["skill"], "으로")

@@ -40,12 +40,12 @@ def main() -> None:
     # 편성: 마르탱(중장병) · 오드(전령관) · 아녜스(약탈병). 아녜스에게 딸이 있어
     # 이탈 장면의 재료가 된다.
     #
-    # 시드 31 은 v3 의 하이라이트가 **한 판에 다 나온다**: abandon · flee ·
+    # 시드 8 은 v3 의 하이라이트가 **한 판에 다 나온다**: abandon · flee ·
     # replan_trigger · boss_adapt · summon · cards · casualty · recovery ·
     # boss_named · 방침 이탈. 밸런스를 튜닝하면 이 시드도 다시 골라야 한다
     # (`scripts/make_trace_sample.py` 를 돌리면 계약 테스트가 말해 준다).
     cfg = RunConfig(
-        seed=31,
+        seed=8,
         lineup=("martin", "aude", "agnes"),
         allocations={},
         classes={},
@@ -68,9 +68,9 @@ def main() -> None:
         recovery=lambda ids, costs, tracer: set(),
         # 뿔피리도 샘플에 넣는다. 없으면 프론트의 뿔피리 서사·인스펙터 분기가
         # 계약 검사를 한 줄도 안 받는다(QA 재검 2026-09-09 R17).
-        # 7회차(야습) 12턴 — 전령관이 있어 즉시 닿는다. 그 앞에서 이미 쓰러진
-        # 사람이 있어 casualty·recovery·boss_named 가 남고, 보스전은 끝까지
-        # 굴러 abandon·flee·boss_adapt 도 남는다.
+        # 7회차(야습) 12턴. 그 앞에서 이미 쓰러진 사람이 있어
+        # casualty·recovery·boss_named 가 남고, 보스전은 끝까지 굴러
+        # abandon·flee·boss_adapt·자기 대상 기술까지 한 파일에 들어온다.
         horn=lambda mission, turn: mission == MISSIONS_A[0].no and turn == 12,
     )
     if args.stdout:

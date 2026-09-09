@@ -550,7 +550,7 @@ def test_mission_end_는_회수_결정을_담고_나온다():
         낸다.extend(ids)
         return set(ids)  # 전부 회수한다
 
-    rec = _run(_config(seed=3, lineup=("thoma", "aude", "martin")), recovery=recovery)
+    rec = _run(_config(seed=10, lineup=("thoma", "aude", "martin")), recovery=recovery)
     assert 낸다, "이 시드에서 끌려간 사람이 없다 — 테스트가 아무것도 안 재고 있다"
 
     끌려간_판 = [e for e in rec.events if e.kind == "mission_end" and e.payload["taken"]]
@@ -577,7 +577,7 @@ def test_회수를_묻기_전에_비용이_화면으로_간다():
         tracer.emit("recovery", {"awaiting_input": True, "costs": costs, "timeout_s": 60})
         return set()
 
-    rec = _run(_config(seed=3, lineup=("thoma", "aude", "martin")), recovery=recovery)
+    rec = _run(_config(seed=10, lineup=("thoma", "aude", "martin")), recovery=recovery)
     assert 본_비용 and all(v > 0 for v in 본_비용.values()), f"비용이 안 왔다: {본_비용}"
 
     물음 = [e for e in rec.events if e.kind == "recovery" and e.payload.get("awaiting_input")]

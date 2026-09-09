@@ -33,5 +33,10 @@ def grade_of(
         return "success" if (taken or injured) else "full_success"
     if outcome == "retreat" and not taken:
         # 전원 생환. 목표는 못 이뤘지만 사람을 잃지 않았다.
+        #
+        # **부상자가 있어도 「철수」다** — 2026-09-09 팀 결정 #13(기획서 v3 §14).
+        # 기획서 §7.1b 표가 "실패 = 퇴각, 부상·끌려감 발생" 이라 두 해석이 다
+        # 근거가 있었고, 코드가 조용히 한쪽을 고른 상태였다(QA J15).
+        # 부상 때문에 「실패」가 되면 "철수는 벌점이 아니다" 가 무의미해진다.
         return "withdraw"
     return "failure"

@@ -113,7 +113,11 @@ export default async function ResultPage({ params }: { params: Promise<{ run: st
               )}
               <tr>
                 <th>모델 호출</th>
-                <td>{r.calls_used} (상한 300)</td>
+                <td>
+                  {r.calls_used} (판당 상한 300)
+                  {/* 폴백이 섞였으면 "모델이 판단했다" 가 아니다(QA 2026-09-09 V2). */}
+                  {r.fallbacks ? <span className="faint"> · 폴백 {r.fallbacks}회</span> : null}
+                </td>
               </tr>
             </tbody>
           </table>

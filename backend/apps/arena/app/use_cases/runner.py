@@ -62,7 +62,11 @@ BattleGateFn = Callable[[bool], None]
 
 # 회수 결정 — 끌려간 대원 id 목록과 각자의 비용을 받고, **지불할 사람**을 돌려준다.
 # 결정하지 않으면(None) 전원 미지불이다 — 기한을 넘기면 자동 미지불(기획서 v3 §6.8).
-RecoveryFn = Callable[[list[str], dict[str, int]], set[str]]
+#
+# 트레이스를 함께 받는 이유: 유저는 **값을 알고** 결정해야 한다. 비용은 러너가
+# 계산하지만 남은 시간은 어댑터만 안다 — 물어보는 쪽이 둘을 묶어 띄운다
+# (QA 2026-09-09 L). 인터미션 훅과 같은 모양이다.
+RecoveryFn = Callable[[list[str], dict[str, int], Tracer], set[str]]
 
 
 @dataclass(frozen=True)
@@ -424,11 +428,19 @@ def play_mission(
     for u in party_units:
         if u.alive or u.fled:
             continue
-        verdict = resolve_casualty(dice, mission.casualty_tier)
-        {"injured": injured, "taken": taken, "dead": dead}[verdict].append(u.id)
+        판정 = resolve_casualty(dice, mission.casualty_tier)
+        {"injured": injured, "taken": taken, "dead": dead}[판정.verdict].append(u.id)
         tracer.emit(
             "casualty",
-            {"tier": mission.casualty_tier, "verdict": verdict, "name": u.name},
+            {
+                "tier": 판정.tier,
+                "verdict": 판정.verdict,
+                "name": u.name,
+                # 굴림과 경계를 함께 싣는다 — 이 판의 가장 무거운 판정이
+                # "왜" 를 못 대면 그냥 랜덤과 구별되지 않는다(QA 2026-09-09 J2).
+                "roll": 판정.roll,
+                "bounds": [list(b) for b in 판정.bounds],
+            },
             actor=u.id,
         )
 
@@ -449,7 +461,10 @@ def play_mission(
     )
     if gate is not None:
         gate(False)
-    tracer.emit("mission_end", res)
+    # `mission_end` 는 여기서 내보내지 않는다. 회수 결정(§6.8)이 아직 안 났고,
+    # 결정 전에 집계를 내보내면 `recovery_paid` 가 영원히 빈 배열이 된다 —
+    # 빠진 필드가 아니라 거짓말하는 필드다(QA 2026-09-09 V3). 러너가 결정을
+    # 받은 뒤에 내보낸다.
     # 다음 보스전이 이 기록을 읽어 카드를 뽑는다(기획서 v3 §8.4).
     if res_history is not None:
         res_history.extend(battle.history)
@@ -516,7 +531,7 @@ def run(
                 for cid in res.taken
                 if cid in 남은_사람
             }
-            지불 = recovery(list(res.taken), 비용) if recovery is not None else set()
+            지불 = recovery(list(res.taken), 비용, tracer) if recovery is not None else set()
             paid = tuple(cid for cid in res.taken if cid in 지불)
             unpaid = tuple(cid for cid in res.taken if cid not in 지불)
             res = replace(res, recovery_paid=paid, recovery_unpaid=unpaid)
@@ -542,6 +557,10 @@ def run(
                 {"member": 첫_사람.id, "before": None, "after": record.boss_title},
                 actor=첫_사람.id,
             )
+        # 판 집계는 회수 결정과 호칭까지 정해진 **뒤에** 나간다. 저장된 런을
+        # 다시 읽는 쪽(결과 화면·실험)이 보는 것은 이 한 줄뿐이다.
+        tracer.emit("mission_end", record.results[-1])
+
         # 죽은 사람은 다음 판에 나오지 않는다. 사망은 소멸이다(기획서 §6.6).
         # 인터미션이 없어도 러너가 책임진다 — 예전에는 1판에서 죽은 단원이
         # 2판에 만피로 서 있었다(QA 라운드 1 P0-5).

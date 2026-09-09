@@ -357,7 +357,7 @@ def test_결정하지_않으면_미지불로_영구_상실이다():
 
 def test_지불하면_섭식_대상에서_빠진다():
     """지불의 값이 여기서 생긴다 — 보스가 그 사람에게서 배우지 못한다(§8.4)."""
-    rec = _taken_run(decide=lambda ids, costs: set(ids))
+    rec = _taken_run(decide=lambda ids, costs, _t: set(ids))
     res = next(r for r in rec.results if r.taken)
     assert res.recovery_paid == res.taken and res.recovery_unpaid == ()
     assert rec.forsaken == ()
@@ -523,3 +523,51 @@ def test_예산을_넘긴_폴백도_호출로_센다():
         h.decide("character", "p", CHARACTER_SCHEMA)
     assert h.calls_used == 3, "예산 밖 호출이 계수에서 빠졌다"
     assert h.fallbacks == 2 and h.budget_skips == 2
+
+
+def test_mission_end_는_회수_결정을_담고_나온다():
+    """QA 2026-09-09 V3·K — emit 이 회수 결정보다 **먼저**라 `recovery_paid` 가
+    영원히 빈 배열이었다. 같은 dataclass 가 트레이스에선 빈 값, `run_end` 에선
+    채운 값으로 두 번 나왔다 — **빠진 필드가 아니라 거짓말하는 필드**다.
+    저장된 런을 다시 읽으면 회수 정보가 통째로 사라졌다.
+    """
+    낸다 = []
+
+    def recovery(ids, costs, _tracer):
+        낸다.extend(ids)
+        return set(ids)  # 전부 회수한다
+
+    rec = _run(_config(seed=3, lineup=("thoma", "aude", "martin")), recovery=recovery)
+    assert 낸다, "이 시드에서 끌려간 사람이 없다 — 테스트가 아무것도 안 재고 있다"
+
+    끌려간_판 = [e for e in rec.events if e.kind == "mission_end" and e.payload["taken"]]
+    assert 끌려간_판, "끌려간 사람이 있는데 mission_end 가 그걸 모른다"
+    for e in 끌려간_판:
+        assert e.payload["recovery_paid"], f"회수 결정이 안 실렸다: {e.payload}"
+
+    # 순서: 사상자 판정 → 회수 결정 → 판 집계. 집계가 결정보다 먼저면 거짓말한다.
+    kinds = [e.kind for e in rec.events]
+    첫_회수 = kinds.index("recovery")
+    assert kinds.index("casualty") < 첫_회수 < kinds.index("mission_end")
+
+
+def test_회수를_묻기_전에_비용이_화면으로_간다():
+    """QA 2026-09-09 L·C2·U8 — 유저가 **값을 모른 채** 결정하고 있었다.
+    비용은 러너가 계산해 놓고 훅에 넘긴 뒤 그대로 버려졌다(`_ = costs`).
+
+    훅이 트레이스를 받으므로 물어보기 전에 값을 화면에 띄울 수 있다.
+    """
+    본_비용 = {}
+
+    def recovery(ids, costs, tracer):
+        본_비용.update(costs)
+        tracer.emit("recovery", {"awaiting_input": True, "costs": costs, "timeout_s": 60})
+        return set()
+
+    rec = _run(_config(seed=3, lineup=("thoma", "aude", "martin")), recovery=recovery)
+    assert 본_비용 and all(v > 0 for v in 본_비용.values()), f"비용이 안 왔다: {본_비용}"
+
+    물음 = [e for e in rec.events if e.kind == "recovery" and e.payload.get("awaiting_input")]
+    결정 = [e for e in rec.events if e.kind == "recovery" and not e.payload.get("awaiting_input")]
+    assert 물음 and 결정, "묻는 이벤트와 답하는 이벤트가 둘 다 있어야 한다"
+    assert 물음[0].seq < 결정[0].seq, "값을 보여주기 전에 결정을 기록했다"

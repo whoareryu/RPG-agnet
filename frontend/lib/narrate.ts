@@ -149,6 +149,11 @@ export function narrate(e: TraceEvent, names: Names): string {
     }
     case "recovery":
       // 기획서 v3 §6.8 — 회수는 보장된 거래가 아니다. 미지불은 영구 상실이다.
+      if (p.awaiting_input) {
+        // 값을 물어보는 쪽 이벤트다. 결정이 아니라 질문이다(QA 2026-09-09 L).
+        const ms = (p.members as string[]) ?? [];
+        return `굴에 끌려간 ${ms.map((m) => names[m] ?? m).join(", ")} — 되찾을 것인가.`;
+      }
       return p.paid
         ? `${withJosa(who, "를")} 되찾기로 한다. 은화 ${p.cost}.`
         : `${withJosa(who, "를")} 굴에 둔다. 되찾는 값은 은화 ${p.cost}였다.`;

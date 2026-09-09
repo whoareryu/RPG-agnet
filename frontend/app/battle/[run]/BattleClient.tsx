@@ -93,22 +93,27 @@ export default function BattleClient({ runId }: { runId: string }) {
     () => events.findLast((e) => e.kind === "mission_start")?.mission ?? null,
     [events],
   );
-  const taken = useMemo(
+  // 백엔드가 값과 남은 시간을 실어 물어본다(QA 2026-09-09 L). 화면이 끌려간
+  // 사람을 casualty 에서 짜맞추지 않는다 — 물어보는 쪽이 명단을 준다.
+  const recoveryAsk = useMemo(
     () =>
-      events.filter(
-        (e) =>
-          e.kind === "casualty" && e.payload.verdict === "taken" && e.mission === lastMission,
-      ),
+      events.findLast(
+        (e) => e.kind === "recovery" && e.payload.awaiting_input && e.mission === lastMission,
+      ) ?? null,
     [events, lastMission],
   );
-  // 백엔드가 결정을 기록했으면(recovery 이벤트) 더는 묻지 않는다 — 재열람·리플레이가 이걸로 해결된다.
+  // 백엔드가 결정을 기록했으면(물음이 아닌 recovery 이벤트) 더는 묻지 않는다 —
+  // 재열람·리플레이가 이걸로 해결된다.
   const decided = useMemo(
-    () => events.some((e) => e.kind === "recovery" && e.mission === lastMission),
+    () =>
+      events.some(
+        (e) => e.kind === "recovery" && !e.payload.awaiting_input && e.mission === lastMission,
+      ),
     [events, lastMission],
   );
   const askRecovery =
     status === "live" &&
-    taken.length > 0 &&
+    recoveryAsk !== null &&
     !decided &&
     lastMission !== null &&
     !recoverySentFor.includes(lastMission);
@@ -174,10 +179,10 @@ export default function BattleClient({ runId }: { runId: string }) {
 
       {cards && <CardsPanel event={cards} names={names} />}
 
-      {askRecovery && (
+      {askRecovery && recoveryAsk && (
         <RecoveryPanel
           runId={runId}
-          taken={taken}
+          ask={recoveryAsk}
           names={names}
           onSent={() =>
             setRecoverySentFor((cur) => (lastMission === null ? cur : [...cur, lastMission]))

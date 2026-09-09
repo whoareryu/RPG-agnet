@@ -15,7 +15,7 @@ def test_봄_구간은_사망이_0이다():
     부상, 끌려감, 사망 = CASUALTY_TABLE["spring"]
     assert 사망 == 0
     # 100 번 굴려도 사망이 나오지 않는다.
-    결과 = {resolve_casualty(FixedDice([r]), "spring") for r in range(1, 101)}
+    결과 = {resolve_casualty(FixedDice([r]), "spring").verdict for r in range(1, 101)}
     assert "dead" not in 결과
     assert 결과 == {"injured", "taken"}
 
@@ -34,10 +34,10 @@ def test_각_구간의_확률은_100_이다():
 def test_굴림은_표의_경계를_그대로_따른다(tier):
     부상, 끌려감, _ = CASUALTY_TABLE[tier]
     if 부상:
-        assert resolve_casualty(FixedDice([부상]), tier) == "injured"
+        assert resolve_casualty(FixedDice([부상]), tier).verdict == "injured"
     if 끌려감:
-        assert resolve_casualty(FixedDice([부상 + 끌려감]), tier) == "taken"
-    assert resolve_casualty(FixedDice([100]), tier) == (
+        assert resolve_casualty(FixedDice([부상 + 끌려감]), tier).verdict == "taken"
+    assert resolve_casualty(FixedDice([100]), tier).verdict == (
         "dead" if CASUALTY_TABLE[tier][2] else "taken"
     )
 
@@ -46,3 +46,16 @@ def test_같은_시드는_같은_판정을_낸다():
     a = [resolve_casualty(SeededDice(7), "summer") for _ in range(20)]
     b = [resolve_casualty(SeededDice(7), "summer") for _ in range(20)]
     assert a == b
+
+
+def test_판정은_굴림과_경계를_함께_돌려준다():
+    """QA 2026-09-09 J2·V10 — 가장 무거운 판정만 "왜" 를 못 댔다.
+
+    인스펙터가 "84 를 굴렸고 부상은 85 까지다" 라고 말할 수 있어야 한다.
+    결과만 남기면 이 판정은 그냥 랜덤과 구별되지 않는다.
+    """
+    r = resolve_casualty(FixedDice([84]), "boss_juvenile")
+    assert r.verdict == "injured" and r.roll == 84
+    # 누적 경계 — 부상 85, 끌려감 98, 사망 100.
+    assert r.bounds == (("injured", 85), ("taken", 98), ("dead", 100))
+    assert r.tier == "boss_juvenile"

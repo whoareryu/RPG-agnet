@@ -38,7 +38,7 @@ from apps.arena.app.use_cases.intermission import (
 )
 from apps.arena.app.use_cases.runner import RunRecord, run
 from apps.arena.domain.constants.balance import FREE_POINTS, HORN_CHARGES, MAX_CALLS, STAT_BASE
-from apps.arena.domain.entities.trace_event import TraceEvent
+from apps.arena.domain.entities.trace_event import TraceEvent, Tracer
 from apps.arena.domain.entities.types import RunConfig
 from apps.arena.domain.ports.ports import DecisionModel, RunStore
 from apps.arena.domain.services.rules.disposition import describe, mbti_label
@@ -290,7 +290,7 @@ def build_app(
                     return True
             return False
 
-        def replay_recovery(ids: list[str], _costs: dict[str, int]) -> set[str]:
+        def replay_recovery(ids: list[str], _costs: dict[str, int], _t: Tracer) -> set[str]:
             return {i for i in ids if i in paid_members}
 
         _start(
@@ -447,10 +447,20 @@ def build_app(
     def _recovery_for(session: RunSession) -> Any:
         """회수 결정 훅. 화면의 답을 기다렸다가 지불 목록을 돌려준다."""
 
-        def hook(ids: list[str], costs: dict[str, int]) -> set[str]:
-            # 화면은 trace 의 recovery 이벤트와 이 플래그로 "지금 묻는다" 를 안다.
-            _ = costs
+        def hook(ids: list[str], costs: dict[str, int], tracer: Tracer) -> set[str]:
             session.awaiting_recovery.set()
+            # **값을 보여주고 묻는다.** 전에는 비용을 받아 그대로 버려서, 유저가
+            # 얼마인지 모른 채 결정했다(QA 2026-09-09 L·U8). 남은 시간도 함께
+            # 준다 — 답하지 않으면 자동 미지불이라 기한이 곧 결정이다.
+            tracer.emit(
+                "recovery",
+                {
+                    "awaiting_input": True,
+                    "members": list(ids),
+                    "costs": dict(costs),
+                    "timeout_s": directive_timeout,
+                },
+            )
             try:
                 return session.recovery.get(timeout=directive_timeout)
             except queue.Empty:

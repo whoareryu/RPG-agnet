@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { nameOf } from "@/lib/narrate";
-import { AXIS_KO, type MissionResult, type Resolution, type RosterEntry, type TraceEvent } from "@/lib/trace";
+import { AXIS_KO, GRADE_KO, type MissionResult, type Resolution, type RosterEntry, type TraceEvent } from "@/lib/trace";
+
+// 쓰러짐 3분기(기획서 v3 §6.0).
+const CASUALTY_KO: Record<string, string> = { injured: "부상", taken: "끌려감", dead: "사망" };
 
 type Names = Record<string, string>;
 
@@ -85,17 +88,46 @@ function Body({ event, names, events }: { event: TraceEvent; names: Names; event
       return <KV rows={[["트리거", String(p.trigger)], ["내용", String(p.detail)]]} />;
     case "flee":
       return <KV rows={[["주사위", `${p.roll} (≤ ${p.needed} 이면 성공)`], ["결과", p.success ? "성공" : "실패"]]} />;
+    case "casualty":
+      // 이 판의 가장 무거운 판정이다. 굴림과 경계를 보여주지 않으면 그냥
+      // 랜덤과 구별되지 않는다(QA 2026-09-09 J2).
+      return (
+        <KV
+          rows={[
+            ["판정", CASUALTY_KO[String(p.verdict)] ?? String(p.verdict)],
+            ["구간", String(p.tier)],
+            [
+              "주사위",
+              p.roll === undefined
+                ? "기록 없음"
+                : `${p.roll} / 100 → ${((p.bounds as [string, number][]) ?? [])
+                    .map(([k, upper]) => `${CASUALTY_KO[k] ?? k} ≤${upper}`)
+                    .join(" · ")}`,
+            ],
+          ]}
+        />
+      );
     case "mission_end": {
       const r = p as unknown as MissionResult;
       return (
         <KV
           rows={[
-            ["결과", r.outcome],
+            ["등급", r.grade ? GRADE_KO[r.grade] : r.outcome],
             ["턴", String(r.turns)],
             ["생존", r.survivors.map((s) => nameOf(s, names)).join(", ") || "없음"],
             ["이탈", r.fled.map((s) => nameOf(s, names)).join(", ") || "없음"],
+            ["부상", (r.injured ?? []).map((s) => nameOf(s, names)).join(", ") || "없음"],
+            ["끌려감", (r.taken ?? []).map((s) => nameOf(s, names)).join(", ") || "없음"],
             ["사망", r.dead.map((s) => nameOf(s, names)).join(", ") || "없음"],
-            ["모델 호출", String(r.calls_used)],
+            [
+              "회수",
+              (r.taken ?? []).length === 0
+                ? "해당 없음"
+                : `값을 치름 ${(r.recovery_paid ?? []).map((s) => nameOf(s, names)).join(", ") || "없음"}` +
+                  ` · 두고 옴 ${(r.recovery_unpaid ?? []).map((s) => nameOf(s, names)).join(", ") || "없음"}`,
+            ],
+            // 폴백이 섞인 판은 "모델이 판단했다" 가 아니다(QA 2026-09-09 V2).
+            ["모델 호출", `${r.calls_used}${r.fallbacks ? ` (폴백 ${r.fallbacks}회)` : ""}`],
             ["작전 수립", String(r.plans)],
             ["포기 여부", r.abandoned ? "단장이 포기를 결정" : "끝까지"],
           ]}

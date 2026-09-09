@@ -41,7 +41,7 @@ from apps.arena.domain.ports.ports import DecisionModel, RunStore
 from apps.arena.domain.services.rules.disposition import describe, mbti_label
 from content.classes import CLASSES, choose_build
 from content.events import pool_for
-from content.missions import MISSIONS_A, MISSIONS_B
+from content.missions import MISSIONS_A, MISSIONS_SINGLE
 from content.party import apply_direction, build_party
 from content.roster import PRESET_ALLOCATIONS, PRESET_ROSTER
 from core.security import 시크릿_검사
@@ -119,7 +119,7 @@ def build_app(
                 genders={},
                 orchestrator=True,
                 adaptation=True,
-                missions=MISSIONS_A,
+                missions=MISSIONS_SINGLE,
             )
             directed = apply_direction(cfg, c.id)
             build = choose_build(directed)
@@ -166,7 +166,7 @@ def build_app(
             genders=req.genders,
             orchestrator=req.orchestrator,
             adaptation=req.adaptation,
-            missions=MISSIONS_B if req.missions == 2 else MISSIONS_A,
+            missions=MISSIONS_A if req.missions == 2 else MISSIONS_SINGLE,
         )
         try:
             members = build_party(cfg)
@@ -446,7 +446,7 @@ def _config_from_payload(p: dict[str, Any]) -> RunConfig:
         genders=dict(p.get("genders") or {}),
         orchestrator=bool(p["orchestrator_on"]),
         adaptation=bool(p["adaptation_on"]),
-        missions=MISSIONS_B if p.get("mission_count", 1) == 2 else MISSIONS_A,
+        missions=MISSIONS_A if p.get("mission_count", 1) == 2 else MISSIONS_SINGLE,
     )
 
 

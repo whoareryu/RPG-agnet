@@ -51,27 +51,27 @@ def test_프리셋_로스터_다섯(client):
     r = client.get("/roster/preset")
     body = r.json()
     assert len(body["roster"]) == 5 and body["free_points"] == 18 and body["lineup_size"] == 3
-    kyle = next(c for c in body["roster"] if c["id"] == "kyle")
-    assert kyle["mbti"] and "딸" in kyle["life"] and kyle["build_preview"]["weapon"]
-    assert sum(kyle["recommended"].values()) == 18
+    가장형 = next(c for c in body["roster"] if c["id"] == "agnes")
+    assert 가장형["mbti"] and "딸" in 가장형["life"] and 가장형["build_preview"]["weapon"]
+    assert sum(가장형["recommended"].values()) == 18
 
 
 def test_출전_인원_상한을_넘으면_422(client):
-    r = client.post("/runs", json={"lineup": ["garret", "elaine", "kyle", "thomas"], "seed": 1})
+    r = client.post("/runs", json={"lineup": ["martin", "aude", "thoma", "agnes"], "seed": 1})
     assert r.status_code == 422 and "1~3명" in r.json()["detail"]
 
 
 def test_혼자_출전해도_받아준다(client):
     """기획서 §8.1 — 게임은 막지 않는다. 결과가 따라올 뿐이다."""
-    assert client.post("/runs", json={"lineup": ["garret"], "seed": 1}).status_code == 200
+    assert client.post("/runs", json={"lineup": ["martin"], "seed": 1}).status_code == 200
 
 
 def test_포인트_초과는_422(client):
     r = client.post(
         "/runs",
         json={
-            "lineup": ["garret", "elaine", "kyle"],
-            "allocations": {"garret": {"str_": 19}},
+            "lineup": ["martin", "aude", "thoma"],
+            "allocations": {"martin": {"str_": 19}},
             "seed": 1,
         },
     )
@@ -79,12 +79,12 @@ def test_포인트_초과는_422(client):
 
 
 def test_없는_캐릭터는_422(client):
-    r = client.post("/runs", json={"lineup": ["garret", "elaine", "ghost"], "seed": 1})
+    r = client.post("/runs", json={"lineup": ["martin", "aude", "ghost"], "seed": 1})
     assert r.status_code == 422
 
 
 def test_런_생성_후_스트림은_run_start_로_시작해_done_으로_끝난다(client):
-    r = client.post("/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 8})
+    r = client.post("/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 8})
     assert r.status_code == 200
     run_id = r.json()["run_id"]
     with client.stream("GET", f"/runs/{run_id}/stream") as s:
@@ -97,7 +97,7 @@ def test_런_생성_후_스트림은_run_start_로_시작해_done_으로_끝난�
 
 
 def test_완료된_런은_저장되고_다시_읽힌다(client):
-    run_id = client.post("/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 8}).json()[
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 8}).json()[
         "run_id"
     ]
     body = _wait_done(client, run_id)
@@ -107,7 +107,7 @@ def test_완료된_런은_저장되고_다시_읽힌다(client):
 
 
 def test_리플레이는_같은_판을_다시_돌린다(client):
-    run_id = client.post("/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 8}).json()[
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 8}).json()[
         "run_id"
     ]
     first = _wait_done(client, run_id)
@@ -172,7 +172,7 @@ def test_두_판이면_인터미션에서_입력을_기다린다(tmp_path):
     """기획서 §7.1 — 1판 → 인터미션 → 2판. 인터미션이 있어야 인과가 닫힌다."""
     c = _two_mission_client(tmp_path)
     run_id = c.post(
-        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+        "/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 3, "missions": 2}
     ).json()["run_id"]
 
     # 인터미션에 닿을 때까지 기다렸다가 지시를 보낸다.
@@ -184,7 +184,7 @@ def test_두_판이면_인터미션에서_입력을_기다린다(tmp_path):
         time.sleep(0.05)
     r = c.post(
         f"/runs/{run_id}/directives",
-        json={"directives": {"kyle": "rest", "garret": "train"}, "growth": {"kyle": {"agi": 3}}},
+        json={"directives": {"thoma": "rest", "martin": "train"}, "growth": {"thoma": {"agi": 3}}},
     )
     assert r.status_code == 200
 
@@ -198,7 +198,7 @@ def test_두_판이면_인터미션에서_입력을_기다린다(tmp_path):
 
 def test_인터미션이_아닐_때의_지시는_409(tmp_path):
     c = _two_mission_client(tmp_path)
-    run_id = c.post("/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 8}).json()[
+    run_id = c.post("/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 8}).json()[
         "run_id"
     ]
     r = c.post(f"/runs/{run_id}/directives", json={"directives": {}})
@@ -209,7 +209,7 @@ def test_응답이_없어도_기본값으로_판이_이어진다(tmp_path):
     """화면이 죽어도 스트림이 영원히 열려 있으면 안 된다."""
     c = _two_mission_client(tmp_path, timeout=0.3)
     run_id = c.post(
-        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+        "/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 3, "missions": 2}
     ).json()["run_id"]
     body = _wait_done(c, run_id, timeout=20)
     kinds = [e["kind"] for e in body["events"]]
@@ -221,7 +221,7 @@ def test_응답이_없어도_기본값으로_판이_이어진다(tmp_path):
 def test_잘못된_성장_분배는_판을_죽이지_않는다(tmp_path):
     c = _two_mission_client(tmp_path)
     run_id = c.post(
-        "/runs", json={"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+        "/runs", json={"lineup": ["martin", "aude", "thoma"], "seed": 3, "missions": 2}
     ).json()["run_id"]
     t0 = time.time()
     while time.time() - t0 < 10:
@@ -230,7 +230,7 @@ def test_잘못된_성장_분배는_판을_죽이지_않는다(tmp_path):
         ):
             break
         time.sleep(0.05)
-    c.post(f"/runs/{run_id}/directives", json={"growth": {"kyle": {"agi": 99}}})
+    c.post(f"/runs/{run_id}/directives", json={"growth": {"thoma": {"agi": 99}}})
     body = _wait_done(c, run_id, timeout=20)
     assert body["error"] is None
     rejected = [
@@ -250,7 +250,7 @@ def test_동시_런_상한을_넘으면_429(tmp_path):
         directive_timeout=30,
     )
     c = TestClient(app)
-    body = {"lineup": ["garret", "elaine", "kyle"], "seed": 3, "missions": 2}
+    body = {"lineup": ["martin", "aude", "thoma"], "seed": 3, "missions": 2}
     first = c.post("/runs", json=body)
     assert first.status_code == 200
     second = c.post("/runs", json=body)
@@ -268,7 +268,7 @@ def test_완료된_런은_상한을_먹지_않는다(tmp_path):
         max_active_runs=1,
     )
     c = TestClient(app)
-    body = {"lineup": ["garret", "elaine", "kyle"], "seed": 8}
+    body = {"lineup": ["martin", "aude", "thoma"], "seed": 8}
     run_id = c.post("/runs", json=body).json()["run_id"]
     _wait_done(c, run_id)
     assert c.post("/runs", json=body).status_code == 200

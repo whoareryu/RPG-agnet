@@ -22,8 +22,8 @@ test("seq 는 1부터 빈틈없이 오른다", () => {
 
 test("이름 맵은 파티와 적을 전부 안다", () => {
   const names = buildNameMap(events);
-  assert.equal(names.kyle, "카일 브란트");
-  assert.equal(names.vargas, "바르가스");
+  assert.equal(names.agnes, "아녜스");
+  assert.equal(names.minotaur, "굴의 그것");
   assert.ok(Object.keys(names).length >= 4);
 });
 
@@ -38,12 +38,12 @@ test("모든 이벤트가 빈 문장이 아닌 서사를 만든다", () => {
 
 test("서사는 id 가 아니라 이름을 쓴다", () => {
   const names = buildNameMap(events);
-  const decisions = events.filter((e) => e.kind === "decision" && e.actor === "kyle");
+  const decisions = events.filter((e) => e.kind === "decision" && e.actor === "agnes");
   assert.ok(decisions.length > 0);
   for (const e of decisions) {
     const s = narrate(e, names);
-    assert.ok(s.includes("카일"), s);
-    assert.ok(!/\bkyle\b/.test(s), s);
+    assert.ok(s.includes("아녜스"), s);
+    assert.ok(!/\bagnes\b/.test(s), s);
   }
 });
 

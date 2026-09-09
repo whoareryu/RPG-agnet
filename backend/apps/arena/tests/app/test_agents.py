@@ -17,7 +17,7 @@ from apps.arena.domain.services.battle.state import (
 from apps.arena.domain.services.rules.stats import allocate
 from content.classes import choose_build
 from content.environments import MINE
-from content.monsters import VARGAS
+from content.monsters import JUVENILE_MINOTAUR
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
 
 
@@ -26,14 +26,16 @@ def _char(cid):
     return replace(c, stats=allocate(c.stats, PRESET_ALLOCATIONS[cid]))
 
 
-def _battle(party=("garret", "elaine", "kyle"), adaptation=True):
+def _battle(party=("martin", "aude", "thoma"), adaptation=True):
     units = {}
     for cid in party:
         c = _char(cid)
         units[cid] = unit_from_character(c, choose_build(c), "party", "front")
-    for e in VARGAS.units:
+    for e in JUVENILE_MINOTAUR.units:
         units[e.id] = unit_from_enemy(e, "enemy")
-    return Battle(seed=1, environment=MINE, units=units, enemy_def=VARGAS, adaptation_on=adaptation)
+    return Battle(
+        seed=1, environment=MINE, units=units, enemy_def=JUVENILE_MINOTAUR, adaptation_on=adaptation
+    )
 
 
 def _tracer():
@@ -55,14 +57,14 @@ class 고정모델:
 
 
 def test_감독은_힐러가_없으면_속공을_고르고_편성을_반영한다():
-    b = _battle(party=("garret", "bern", "kyle"))
+    b = _battle(party=("martin", "gilles", "thoma"))
     tracer, sink = _tracer()
     plan = make_plan(b, "party", FakeModel(), tracer, "initial")
     assert plan.strategy == "rush" and plan.worth_fighting
     # 방패병이 전열을 잡고 전사는 그 뒤에서 때린다 — 근접 적은 전열이 살아 있는
     # 한 후열에 닿지 못한다(resolve.py 의 reachable). 클래스 개편 뒤의 편성이다.
-    assert b.units["bern"].position == "front"
-    assert b.units["garret"].position == "back" and b.units["kyle"].position == "back"
+    assert b.units["gilles"].position == "front"
+    assert b.units["martin"].position == "back" and b.units["thoma"].position == "back"
     assert sink.of_kind("plan")[0].payload["reason"] == "initial"
 
 
@@ -96,18 +98,20 @@ def test_이탈_판정이면_모델이_따랐다고_해도_이탈이다():
     """설계 §6.4 — 모델이 순응 여부를 뒤집을 수 없다."""
     b = _battle()
     tracer, sink = _tracer()
-    b.units["kyle"].hp = 3
-    m = 고정모델({"action": "ATTACK", "target": "vargas", "follows_plan": True, "reason": "싸운다"})
-    d = character_act(b, "kyle", None, m, FixedDice([1], uniforms=[0.0]), tracer, 0.5)
+    b.units["thoma"].hp = 3
+    m = 고정모델(
+        {"action": "ATTACK", "target": "minotaur", "follows_plan": True, "reason": "싸운다"}
+    )
+    d = character_act(b, "thoma", None, m, FixedDice([1], uniforms=[0.0]), tracer, 0.5)
     assert d.compliance.verdict == "deviate" and d.follows_plan is False
     kinds = [e.kind for e in sink.events]
     assert kinds == ["context", "compliance", "decision"]
 
 
 def test_모델이_불가능한_행동을_고르면_가장_가까운_것으로_바꾸고_기록한다():
-    actions = [Action("ATTACK", "vargas"), Action("DEFEND"), Action("WAIT")]
+    actions = [Action("ATTACK", "minotaur"), Action("DEFEND"), Action("WAIT")]
     a, note = action_from({"action": "ATTACK", "target": "ghost"}, actions)
-    assert a == Action("ATTACK", "vargas") and note
+    assert a == Action("ATTACK", "minotaur") and note
     a, note = action_from({"action": "SKILL", "skill": "화염구"}, actions)
     assert a == Action("WAIT") and note
 
@@ -115,7 +119,7 @@ def test_모델이_불가능한_행동을_고르면_가장_가까운_것으로_�
 def test_감독_OFF_에서도_단원은_행동한다():
     b = _battle()
     tracer, _ = _tracer()
-    d = character_act(b, "garret", None, FakeModel(), FixedDice([1], uniforms=[0.99]), tracer, None)
+    d = character_act(b, "martin", None, FakeModel(), FixedDice([1], uniforms=[0.99]), tracer, None)
     assert d.action.kind in ("ATTACK", "SKILL")
     assert d.follows_plan is False  # 방침이 없으니 "따랐다"도 없다
 
@@ -124,7 +128,7 @@ def test_Fake_단원은_방침의_집중_목표를_친다():
     b = _battle()
     tracer, _ = _tracer()
     plan = make_plan(b, "party", FakeModel(), tracer, "initial")
-    d = character_act(b, "garret", plan, FakeModel(), FixedDice([1], uniforms=[0.99]), tracer, 0.5)
+    d = character_act(b, "martin", plan, FakeModel(), FixedDice([1], uniforms=[0.99]), tracer, 0.5)
     assert d.action.target == plan.focus_target or d.action.kind == "SKILL"
     assert d.follows_plan
 
@@ -132,7 +136,9 @@ def test_Fake_단원은_방침의_집중_목표를_친다():
 # ─── 보스 ─────────────────────────────────────────────────────────────
 
 
-def _history(b, actor, turns, target="vargas", dmg=10, action="ATTACK", healed=0, faction="party"):
+def _history(
+    b, actor, turns, target="minotaur", dmg=10, action="ATTACK", healed=0, faction="party"
+):
     for t in turns:
         b.history.append(ActionRecord(t, actor, faction, action, target, dmg, healed))
 
@@ -140,10 +146,10 @@ def _history(b, actor, turns, target="vargas", dmg=10, action="ATTACK", healed=0
 def test_같은_아군이_3턴_연속_공격하면_집중_타격_적응():
     b = _battle()
     b.turn = 4
-    _history(b, "garret", [1, 2, 3])
-    _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
-    pattern, ev = detect_adaptation(b, "vargas")
-    assert pattern == "repeat_attacker" and ev["actor"] == "garret"
+    _history(b, "martin", [1, 2, 3])
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    pattern, ev = detect_adaptation(b, "minotaur")
+    assert pattern == "repeat_attacker" and ev["actor"] == "martin"
 
 
 def test_공격이_전열에_막히면_전열_붕괴_적응():
@@ -152,33 +158,33 @@ def test_공격이_전열에_막히면_전열_붕괴_적응():
     보스가 때린 것이 전부 앞줄이면, 뒤를 치려면 앞을 부수는 수밖에 없다.
     파티 행동이 아니라 **보스 자신의 타격**을 본다.
     """
-    b = _battle(party=("bern", "garret", "kyle"))
+    b = _battle(party=("gilles", "martin", "thoma"))
     b.turn = 4
     for u in b.units.values():
         if u.faction == "party":
-            u.position = "front" if u.id == "bern" else "back"
+            u.position = "front" if u.id == "gilles" else "back"
     # 보스가 3턴 내내 전열의 베른만 때렸다.
-    _history(b, "vargas", [1, 2, 3], target="bern", dmg=20, faction="enemy")
-    _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
-    pattern, ev = detect_adaptation(b, "vargas")
-    assert pattern == "frontline_wall" and ev["blocker"] == "bern"
+    _history(b, "minotaur", [1, 2, 3], target="gilles", dmg=20, faction="enemy")
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    pattern, ev = detect_adaptation(b, "minotaur")
+    assert pattern == "frontline_wall" and ev["blocker"] == "gilles"
 
 
 def test_치유_2회면_치유자_타격_적응():
     b = _battle()
     b.turn = 4
-    _history(b, "elaine", [1, 2], target="garret", dmg=0, action="SKILL:치유", healed=20)
-    _history(b, "garret", [3], dmg=5)
-    _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
-    assert detect_adaptation(b, "vargas")[0] == "healing"
+    _history(b, "aude", [1, 2], target="martin", dmg=0, action="SKILL:치유", healed=20)
+    _history(b, "martin", [3], dmg=5)
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    assert detect_adaptation(b, "minotaur")[0] == "healing"
 
 
 def test_방어_위주면_소환_가속_적응():
     b = _battle()
     b.turn = 4
-    _history(b, "garret", [1, 2, 3], dmg=0, action="DEFEND")
-    _history(b, "kyle", [1, 2, 3], dmg=0, action="DEFEND")
-    assert detect_adaptation(b, "vargas")[0] == "turtle"
+    _history(b, "martin", [1, 2, 3], dmg=0, action="DEFEND")
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    assert detect_adaptation(b, "minotaur")[0] == "turtle"
 
 
 def test_적응_OFF_면_적응하지_않고_ON_이면_boss_adapt_가_남는다():
@@ -186,29 +192,29 @@ def test_적응_OFF_면_적응하지_않고_ON_이면_boss_adapt_가_남는다()
         b = _battle(adaptation=on)
         b.turn = 4
         b.summon_every = 3
-        _history(b, "garret", [1, 2, 3])
+        _history(b, "martin", [1, 2, 3])
         tracer, sink = _tracer()
-        action, pattern = boss_act(b, "vargas", FakeModel(), tracer)
+        action, pattern = boss_act(b, "minotaur", FakeModel(), tracer)
         assert (pattern is not None) == on
         assert (len(sink.of_kind("boss_adapt")) == 1) == on
         if on:
-            assert b.boss_focus == "garret" and action.target == "garret"
+            assert b.boss_focus == "martin" and action.target == "martin"
 
 
 def test_같은_패턴은_창_안에서_한_번만():
     b = _battle()
     b.turn = 4
-    _history(b, "garret", [1, 2, 3])
+    _history(b, "martin", [1, 2, 3])
     b.boss_adaptations.append((3, "repeat_attacker"))
-    assert detect_adaptation(b, "vargas")[0] is None
+    assert detect_adaptation(b, "minotaur")[0] is None
 
 
 def test_수하는_모델_없이_가장_약한_적을_친다():
     b = _battle()
-    b.units["kyle"].hp = 5
+    b.units["thoma"].hp = 5
     tracer, sink = _tracer()
-    a = minion_act(b, "vargas", tracer)  # 보스를 수하 정책으로 돌려도 동작한다
-    assert a.target == "kyle" and a.kind in ("ATTACK", "SKILL")
+    a = minion_act(b, "minotaur", tracer)  # 보스를 수하 정책으로 돌려도 동작한다
+    assert a.target == "thoma" and a.kind in ("ATTACK", "SKILL")
     assert sink.of_kind("decision")[0].payload["model"]["model"] == "policy"
 
 
@@ -220,8 +226,10 @@ def test_후퇴_명령은_모델에게_묻지_않는다():
     b = _battle()
     b.retreat_ordered = True
     tracer, sink = _tracer()
-    m = 고정모델({"action": "ATTACK", "target": "vargas", "follows_plan": True, "reason": "싸운다"})
-    d = character_act(b, "kyle", None, m, FixedDice([1], uniforms=[0.99]), tracer, 0.1)
+    m = 고정모델(
+        {"action": "ATTACK", "target": "minotaur", "follows_plan": True, "reason": "싸운다"}
+    )
+    d = character_act(b, "thoma", None, m, FixedDice([1], uniforms=[0.99]), tracer, 0.1)
     assert d.action.kind == "FLEE"
     dec = sink.of_kind("decision")[0].payload
     assert dec["verdict"] == "retreat" and dec["model"]["model"] == "order"
@@ -232,30 +240,32 @@ def test_이탈이면_방침_행동이_선택지에서_빠진다():
     from apps.arena.domain.entities.types import Plan
 
     b = _battle()
-    b.units["kyle"].hp = 3
-    plan = Plan("x", True, "rush", {}, "vargas", {"kyle": "vargas 공격"}, 0.3, "r")
+    b.units["thoma"].hp = 3
+    plan = Plan("x", True, "rush", {}, "minotaur", {"thoma": "vargas 공격"}, 0.3, "r")
     tracer, sink = _tracer()
-    m = 고정모델({"action": "ATTACK", "target": "vargas", "follows_plan": True, "reason": "싸운다"})
-    d = character_act(b, "kyle", plan, m, FixedDice([1], uniforms=[0.0]), tracer, 0.5)
+    m = 고정모델(
+        {"action": "ATTACK", "target": "minotaur", "follows_plan": True, "reason": "싸운다"}
+    )
+    d = character_act(b, "thoma", plan, m, FixedDice([1], uniforms=[0.0]), tracer, 0.5)
     assert d.compliance.verdict == "deviate"
-    assert not (d.action.kind == "ATTACK" and d.action.target == "vargas")
+    assert not (d.action.kind == "ATTACK" and d.action.target == "minotaur")
 
 
 def test_적응은_실제로_바뀐_것을_남긴다():
     """QA 라운드 1 P1-9 — 같은 적응을 세 번 기록하면서 상태가 그대로면 로그가 거짓말한다."""
     b = _battle()
     b.turn = 4
-    _history(b, "garret", [1, 2, 3])
+    _history(b, "martin", [1, 2, 3])
     tracer, sink = _tracer()
-    boss_act(b, "vargas", FakeModel(), tracer)
+    boss_act(b, "minotaur", FakeModel(), tracer)
     eff = sink.of_kind("boss_adapt")[0].payload["effect"]
-    assert eff["field"] == "boss_focus" and eff["after"] == "garret" and eff["no_change"] is False
+    assert eff["field"] == "boss_focus" and eff["after"] == "martin" and eff["no_change"] is False
 
 
 def test_보스_적응_대상은_해시_순서에_기대지_않는다():
     """QA 라운드 1 P0-3 — set 순회는 PYTHONHASHSEED 마다 다른 판을 만든다."""
     b = _battle()
     b.turn = 4
-    _history(b, "kyle", [1, 2, 3])  # 카일이 먼저 치기 시작했다
-    _history(b, "garret", [1, 2, 3])
-    assert detect_adaptation(b, "vargas")[1]["actor"] == "kyle"
+    _history(b, "thoma", [1, 2, 3])  # 카일이 먼저 치기 시작했다
+    _history(b, "martin", [1, 2, 3])
+    assert detect_adaptation(b, "minotaur")[1]["actor"] == "thoma"

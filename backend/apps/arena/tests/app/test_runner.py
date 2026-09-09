@@ -11,7 +11,7 @@ from content.party import build_party
 
 
 def _config(
-    seed=1, lineup=("garret", "elaine", "kyle"), orchestrator=True, adaptation=True, classes=None
+    seed=1, lineup=("martin", "aude", "thoma"), orchestrator=True, adaptation=True, classes=None
 ):
     return RunConfig(
         seed=seed,
@@ -76,41 +76,44 @@ def test_호출_수는_상한_안이고_mission_end_에_남는다():
 
 @pytest.mark.parametrize("seed", range(1, 41))
 def test_어느_시드든_예외_없이_끝난다(seed):
-    rec = _run(_config(seed=seed, lineup=("garret", "bern", "thomas")))
+    rec = _run(_config(seed=seed, lineup=("martin", "gilles", "agnes")))
     assert rec.results[0].outcome in ("win", "lose", "retreat", "draw")
 
 
 def test_후퇴가_실제로_발생하는_시드가_있다():
     """기획서 §5 — 무조건 싸우는 게임이 아니다. 포기 판단이 트레이스에 남아야 한다."""
     found = None
-    for seed in range(1, 60):
-        rec = _run(_config(seed=seed, lineup=("thomas", "kyle", "bern")))
-        if rec.results[0].abandoned:
+    for seed in range(1, 120):
+        # 지원 둘만 보내면 화력이 없어 승산이 무너진다 — 조합은 유저의 시험 문제다(§8.1).
+        rec = _run(_config(seed=seed, lineup=("aude", "agnes")))
+        if any(r.abandoned for r in rec.results):
             found = rec
             break
-    assert found is not None, "60개 시드에서 후퇴가 한 번도 없다 — 승산 붕괴가 감독에게 닿지 않는다"
+    assert found is not None, (
+        "120개 시드에서 후퇴가 한 번도 없다 — 승산 붕괴가 감독에게 닿지 않는다"
+    )
     kinds = [e.kind for e in found.events]
     assert "abandon" in kinds and "replan_trigger" in kinds
-    assert found.results[0].outcome in ("retreat", "lose", "draw", "win")
+    assert all(r.outcome in ("retreat", "lose", "draw", "win") for r in found.results)
 
 
 def test_출전_인원_상한을_넘으면_거부한다():
     """하한은 1 이다 — 혼자 가는 것도 단주의 선택(기획서 §7.2·§8.1)."""
-    build_party(_config(lineup=("garret",)))
-    build_party(_config(lineup=("garret", "elaine")))
+    build_party(_config(lineup=("martin",)))
+    build_party(_config(lineup=("martin", "aude")))
     with pytest.raises(ValueError, match="1~3명"):
-        build_party(_config(lineup=("garret", "elaine", "kyle", "thomas")))
+        build_party(_config(lineup=("martin", "aude", "thoma", "agnes")))
 
 
 def test_같은_캐릭터_중복_출전은_거부한다():
     with pytest.raises(ValueError):
-        build_party(_config(lineup=("garret", "garret", "kyle")))
+        build_party(_config(lineup=("martin", "martin", "thoma")))
 
 
 def test_트롤픽_전사_셋도_돈다():
     cfg = _config(
-        lineup=("bern", "elaine", "thomas"),
-        classes={"bern": "warrior", "elaine": "warrior", "thomas": "warrior"},
+        lineup=("gilles", "aude", "agnes"),
+        classes={"gilles": "warrior", "aude": "warrior", "agnes": "warrior"},
     )
     rec = _run(cfg)
     assert rec.results[0].outcome in ("win", "lose", "retreat", "draw")
@@ -170,7 +173,7 @@ def test_전사는_실제로_적을_친다():
         total += sum(
             s["damage"]
             for e in rec.events
-            if e.kind == "resolution" and e.actor == "garret"
+            if e.kind == "resolution" and e.actor == "martin"
             for s in e.payload["strikes"]
         )
     assert total > 0, "전사가 다섯 판 동안 아무에게도 피해를 주지 못했다"
@@ -179,14 +182,29 @@ def test_전사는_실제로_적을_친다():
 def test_봄에는_아무도_죽지_않는다():
     """기획서 v3 §6.0 — 1~4 출동 사망 0%. 고블린은 죽이기보다 끌고 간다.
 
-    튜토리얼 구간에서 유저는 아무도 잃지 않고 부상과 피로 관리만 배운다.
+    A단계 미션은 6·5회차라 봄이 아니다(2026-09-08 팀 결정 ①). 봄 구간을
+    직접 만들어 확률표의 0% 가 실제로 지켜지는지 잰다.
     """
-    from content.missions import MISSIONS_A
+    from dataclasses import replace as _replace
 
-    assert all(m.casualty_tier == "spring" for m in MISSIONS_A)
+    from content.environments import SWAMP
+    from content.missions import MISSION_NIGHT_RAID
+    from content.monsters import GOBLIN_BAND
+
+    봄 = (
+        _replace(
+            MISSION_NIGHT_RAID,
+            no=1,
+            name="마을 방어",
+            enemy=GOBLIN_BAND,
+            environment=SWAMP,
+            casualty_tier="spring",
+        ),
+    )
     쓰러진_적_있다 = False
-    for seed in range(1, 30):
-        rec = _run(_config(seed=seed, lineup=("kyle", "elaine")))
+    for seed in range(1, 40):
+        cfg = _replace(_config(seed=seed, lineup=("thoma", "aude")), missions=봄)
+        rec = _run(cfg)
         for res in rec.results:
             assert not res.dead, f"seed {seed}: 봄인데 {res.dead} 가 죽었다"
             쓰러진_적_있다 = 쓰러진_적_있다 or bool(res.injured or res.taken)
@@ -202,12 +220,12 @@ def test_사망하거나_끌려간_단원은_다음_판에_나오지_않는다()
     # 가을 구간(사망 20%)으로 바꿔 실제로 잃는 판을 만든다.
     가을 = tuple(_replace(m, casualty_tier="autumn") for m in MISSIONS_B)
     for seed in range(1, 60):
-        cfg = _replace(_config(seed=seed, lineup=("kyle", "elaine")), missions=가을)
+        cfg = _replace(_config(seed=seed, lineup=("thoma", "aude")), missions=가을)
         rec = _run(cfg)
         빠진_사람 = set(rec.results[0].dead) | set(rec.results[0].taken)
         if len(rec.results) < 2 or not 빠진_사람:
             continue
-        second = [e for e in rec.events if e.kind == "mission_start" and e.mission == 2][0]
+        second = [e for e in rec.events if e.kind == "mission_start"][1]
         나온_사람 = {p["id"] for p in second.payload["party"]}
         assert not (빠진_사람 & 나온_사람), (
             f"seed {seed}: {빠진_사람 & 나온_사람} 이(가) 2판에 섰다"

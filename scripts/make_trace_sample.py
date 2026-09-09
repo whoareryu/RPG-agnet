@@ -40,11 +40,11 @@ def main() -> None:
     # 전부 나오고, **카일이 딸을 이유로 전장을 벗어나는 장면**과 지혜 마스킹이
     # 걸린 판단이 함께 들어 있다. 데모 시나리오(기획서 §11.3)와 진입 화면
     # 3장면 카드의 재료가 이 한 판에 있다.
-    # 시드 9: 클래스 개편(2026-09-08) 뒤로 시드 1 은 승리로 끝나 이탈 장면이
-    # 사라졌다. flee·abandon 이 함께 나오는 판으로 다시 골랐다.
+    # 편성: 마르탱(중장병) · 오드(전령관) · 아녜스(약탈병). 아녜스에게 딸이 있어
+    # 이탈 장면의 재료가 된다. 시드 11 은 flee·abandon·casualty·boss_adapt 가 한 판에 다 나온다.
     cfg = RunConfig(
-        seed=9,
-        lineup=("garret", "kyle", "bern"),
+        seed=11,
+        lineup=("martin", "aude", "agnes"),
         allocations={},
         classes={},
         genders={},

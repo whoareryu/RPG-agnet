@@ -84,7 +84,7 @@ CLASSES: dict[str, ClassDef] = {
     ),
     "warrior": ClassDef(
         "warrior",
-        "전사",
+        "중장병",
         ("str_", "agi"),
         ("sturdy", "normal"),
         0,
@@ -93,7 +93,7 @@ CLASSES: dict[str, ClassDef] = {
     ),
     "archer": ClassDef(
         "archer",
-        "궁수",
+        "장궁병",
         ("agi",),
         ("slim", "normal"),
         165,
@@ -102,7 +102,7 @@ CLASSES: dict[str, ClassDef] = {
     ),
     "rogue": ClassDef(
         "rogue",
-        "도적",
+        "약탈병",
         ("agi", "luck"),
         ("slim",),
         0,
@@ -111,7 +111,7 @@ CLASSES: dict[str, ClassDef] = {
     ),
     "bard": ClassDef(
         "bard",
-        "음유시인",
+        "전령관",
         ("wis", "int_"),
         ("slim", "normal", "sturdy"),
         0,
@@ -195,8 +195,8 @@ def choose_build(c: Character) -> BuildChoice:
             w, ARMORS["가죽 갑옷"], skills, "가볍게 움직여야 한다. 손이 빠르면 투척, 아니면 단검."
         )
     # bard — 살리는 사람이다. 북으로 박자를 잡고, 지혜가 받치면 곡을 끌고 간다.
-    if s.wis >= 12:
-        w, why = WEAPONS["단검과 붕대"], "지혜가 높다. 앞에 붙어 지혈하고 봉합한다."
+    if s.str_ >= 12:
+        w, why = WEAPONS["단검과 붕대"], "몸이 받친다. 앞에 붙어 지혈하고 봉합한다."
     else:
         w, why = WEAPONS["나팔"], "먼저 신호가 서야 한다. 나팔로 대열의 박자를 잡는다."
     return BuildChoice(w, ARMORS["가죽 갑옷"], skills, why)

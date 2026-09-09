@@ -27,13 +27,13 @@ from content.events import LIFE_EVENTS, eligible, pool_for
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
 
 
-def _char(cid="kyle", **over):
+def _char(cid="thoma", **over):
     c = ROSTER_BY_ID[cid]
     c = replace(c, stats=allocate(c.stats, PRESET_ALLOCATIONS[cid]))
     return replace(c, **over) if over else c
 
 
-def _member(cid="kyle", **over):
+def _member(cid="thoma", **over):
     c = _char(cid, **over)
     return (c, choose_build(c), voice(c))
 
@@ -47,7 +47,7 @@ def _tracer():
 
 
 def test_계획적일수록_순응하고_피로할수록_거부한다():
-    성실 = _char("thomas")  # planning +50
+    성실 = _char("aude")  # 계획 +80
     지친 = replace(성실, fatigue=80)
     p1, _ = compliance_probability(성실)
     p2, _ = compliance_probability(지친)
@@ -55,14 +55,14 @@ def test_계획적일수록_순응하고_피로할수록_거부한다():
 
 
 def test_순응_확률은_범위_안이다():
-    극단 = replace(_char("elaine"), fatigue=100)
+    극단 = replace(_char("aude"), fatigue=100)
     p, bd = compliance_probability(극단)
     assert 0.10 <= p <= 0.95
     assert set(bd) == {"base", "planning", "cooperation", "fatigue"}
 
 
 def test_판정은_순응_부분순응_거부로_갈린다():
-    c = _char("thomas")
+    c = _char("agnes")
     p, _ = compliance_probability(c)
     assert judge_training(c, FixedDice([1], uniforms=[p - 0.01])).verdict == "comply"
     assert judge_training(c, FixedDice([1], uniforms=[p + 0.05])).verdict == "partial"
@@ -71,9 +71,9 @@ def test_판정은_순응_부분순응_거부로_갈린다():
 
 def test_성실하면_advantage_피로하면_disadvantage():
     """기획서 §5.1 — 성실→advantage, 피로→disadvantage."""
-    assert roll_mode(_char("thomas"))[0] == "advantage"  # planning +50
-    assert roll_mode(replace(_char("thomas"), fatigue=80))[0] == "disadvantage"
-    assert roll_mode(_char("elaine"))[0] == "normal"  # planning -10
+    assert roll_mode(_char("aude"))[0] == "advantage"  # 계획 +80
+    assert roll_mode(replace(_char("aude"), fatigue=80))[0] == "disadvantage"
+    assert roll_mode(_char("martin"))[0] == "normal"  # 계획 -20
 
 
 def test_advantage_는_두_번_굴려_높은_것():
@@ -88,7 +88,7 @@ def test_advantage_는_두_번_굴려_높은_것():
 def test_거부하면_술집에_간다():
     """기획서 §5.1 — 훈련 지시를 거부하면 대체 행동의 서사가 붙고 결과도 파라미터로 귀결한다."""
     tracer, sink = _tracer()
-    c = _char("elaine")
+    c = _char("aude")
     after, r = run_training_turn(c, "train", FakeModel(), FixedDice([10], uniforms=[0.999]), tracer)
     assert r["verdict"] == "refuse"
     assert "술집" in r["what"] and r["narration"]
@@ -98,7 +98,7 @@ def test_거부하면_술집에_간다():
 
 def test_훈련하면_피로가_쌓이고_쉬면_풀린다():
     tracer, _ = _tracer()
-    c = replace(_char("thomas"), fatigue=40)
+    c = replace(_char("agnes"), fatigue=40)
     훈련, _ = run_training_turn(c, "train", FakeModel(), FixedDice([18], uniforms=[0.0]), tracer)
     휴식, _ = run_training_turn(c, "rest", FakeModel(), FixedDice([18], uniforms=[0.0]), tracer)
     assert 훈련.fatigue > c.fatigue > 휴식.fatigue
@@ -106,7 +106,7 @@ def test_훈련하면_피로가_쌓이고_쉬면_풀린다():
 
 def test_피로는_0과_100_사이로_잘린다():
     tracer, _ = _tracer()
-    c = replace(_char("thomas"), fatigue=2)
+    c = replace(_char("agnes"), fatigue=2)
     after, _ = run_training_turn(c, "rest", FakeModel(), FixedDice([18], uniforms=[0.0]), tracer)
     assert after.fatigue == 0
 
@@ -114,7 +114,7 @@ def test_피로는_0과_100_사이로_잘린다():
 def test_육성_턴은_능력치를_건드리지_않는다():
     """기획서 §5 — 유저가 찍은 포인트는 시스템이 뺏지도 주지도 않는다."""
     tracer, _ = _tracer()
-    c = _char("kyle")
+    c = _char("thoma")
     for cat in ("train", "rest", "study", "leisure"):
         after, _ = run_training_turn(c, cat, FakeModel(), SeededDice(1), tracer)
         assert after.stats == c.stats
@@ -124,16 +124,16 @@ def test_육성_턴은_능력치를_건드리지_않는다():
 
 
 def test_부양가족이_없으면_아이_사건이_후보에_없다():
-    카일 = eligible(LIFE_EVENTS, "male", dependents=1)
-    가렛 = eligible(LIFE_EVENTS, "male", dependents=0)
-    assert any(e.key == "child_sick" for e in 카일)
-    assert not any(e.key == "child_sick" for e in 가렛)
+    딸이_있다 = eligible(LIFE_EVENTS, "female", dependents=1)
+    없다 = eligible(LIFE_EVENTS, "female", dependents=0)
+    assert any(e.key == "child_sick" for e in 딸이_있다)
+    assert not any(e.key == "child_sick" for e in 없다)
 
 
 def test_사건은_성향을_바꾸고_diff_가_남는다():
     """기획서 §2 — 이벤트 뒤에 전투가 있어야 "이벤트 → 판단 변화" 인과가 닫힌다."""
     tracer, sink = _tracer()
-    c = _char("kyle")
+    c = _char("thoma")
     event = next(e for e in LIFE_EVENTS if e.key == "child_sick")
     after, diff = apply_life_event(c, event, FakeModel(), tracer)
     assert after.disposition.risk == c.disposition.risk - 20
@@ -143,17 +143,17 @@ def test_사건은_성향을_바꾸고_diff_가_남는다():
 
 def test_성향_변화는_범위를_넘지_않는다():
     tracer, _ = _tracer()
-    c = replace(_char("elaine"), disposition=replace(_char("elaine").disposition, sacrifice=95))
+    c = replace(_char("aude"), disposition=replace(_char("aude").disposition, sacrifice=95))
     event = next(e for e in LIFE_EVENTS if e.key == "comrade_debt")  # sacrifice +20
     after, _ = apply_life_event(c, event, FakeModel(), tracer)
     assert after.disposition.sacrifice == 100
 
 
 def test_사건은_시드가_고르고_후보가_없으면_안_일어난다():
-    a = pick({"kyle": list(LIFE_EVENTS)}, SeededDice(1))
-    b = pick({"kyle": list(LIFE_EVENTS)}, SeededDice(1))
+    a = pick({"thoma": list(LIFE_EVENTS)}, SeededDice(1))
+    b = pick({"thoma": list(LIFE_EVENTS)}, SeededDice(1))
     assert a == b and a is not None
-    assert pick({"kyle": []}, SeededDice(1)) is None
+    assert pick({"thoma": []}, SeededDice(1)) is None
 
 
 # ─── 성장 포인트 ────────────────────────────────────────────────────────
@@ -166,24 +166,24 @@ def test_승리는_10점_그_밖은_6점():
 
 def test_안_쓴_포인트는_은행에_쌓인다():
     tracer, _ = _tracer()
-    members = [_member("kyle")]
-    m1, bank = grant(members, "win", {"kyle": {"agi": 4}}, {}, tracer)
-    assert bank["kyle"] == 6 and m1[0][0].stats.agi == _char("kyle").stats.agi + 4
+    members = [_member("thoma")]
+    m1, bank = grant(members, "win", {"thoma": {"agi": 4}}, {}, tracer)
+    assert bank["thoma"] == 6 and m1[0][0].stats.agi == _char("thoma").stats.agi + 4
     _, bank2 = grant(m1, "lose", {}, bank, tracer)
-    assert bank2["kyle"] == 12
+    assert bank2["thoma"] == 12
 
 
 def test_가진_것보다_많이_찍으면_거부한다():
     tracer, _ = _tracer()
     with pytest.raises(ValueError, match="찍으려 한다"):
-        grant([_member("kyle")], "win", {"kyle": {"agi": 11}}, {}, tracer)
+        grant([_member("thoma")], "win", {"thoma": {"agi": 11}}, {}, tracer)
 
 
 def test_성장_포인트도_상한_20을_넘지_못한다():
     tracer, _ = _tracer()
-    c = replace(_char("kyle"), stats=replace(_char("kyle").stats, agi=19))
+    c = replace(_char("thoma"), stats=replace(_char("thoma").stats, agi=19))
     with pytest.raises(ValueError, match="20"):
-        grant([(c, choose_build(c), "")], "win", {"kyle": {"agi": 3}}, {}, tracer)
+        grant([(c, choose_build(c), "")], "win", {"thoma": {"agi": 3}}, {}, tracer)
 
 
 # ─── 인터미션 전체 ──────────────────────────────────────────────────────
@@ -191,11 +191,11 @@ def test_성장_포인트도_상한_20을_넘지_못한다():
 
 def test_인터미션은_세_가지를_한_번씩_한다():
     tracer, sink = _tracer()
-    members = [_member("garret"), _member("elaine"), _member("kyle")]
+    members = [_member("martin"), _member("aude"), _member("thoma")]
     out = run_intermission(
         members,
         "win",
-        IntermissionInput(directives={"kyle": "rest"}),
+        IntermissionInput(directives={"thoma": "rest"}),
         pool_for,
         FakeModel(),
         SeededDice(5),
@@ -216,7 +216,7 @@ def test_인터미션은_시드에_결정된다():
     def once():
         tracer, sink = _tracer()
         run_intermission(
-            [_member("garret"), _member("kyle")],
+            [_member("martin"), _member("thoma")],
             "lose",
             IntermissionInput(),
             pool_for,

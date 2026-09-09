@@ -11,7 +11,7 @@ def test_모르는_kind_는_거부한다():
 
 def test_왕복_직렬화():
     e = TraceEvent(
-        "r", 1, "2026-09-07T00:00:00", 1, 3, "decision", "kyle", {"a": [1, 2], "b": "한글"}
+        "r", 1, "2026-09-07T00:00:00", 1, 3, "decision", "thoma", {"a": [1, 2], "b": "한글"}
     )
     assert from_json(to_json(e)) == e
 
@@ -31,7 +31,7 @@ def test_페이로드의_dataclass_와_tuple_은_직렬화된다():
     from apps.arena.domain.entities.types import Action
 
     t = Tracer("r", ListSink(), clock=lambda: "T")
-    e = t.emit("decision", {"action": Action("ATTACK", "vargas"), "pair": (1, "x")})
+    e = t.emit("decision", {"action": Action("ATTACK", "minotaur"), "pair": (1, "x")})
     assert e.payload["action"]["kind"] == "ATTACK"
     assert e.payload["pair"] == [1, "x"]
 

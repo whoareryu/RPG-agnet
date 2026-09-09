@@ -45,21 +45,21 @@ COMPOSITIONS: tuple[Composition, ...] = (
     Composition(
         "warriors",
         "전사 몰빵",
-        ("garret", "kyle", "thomas"),
-        {"kyle": "warrior", "thomas": "warrior"},
-        {"kyle": _WARRIOR, "thomas": _WARRIOR},
+        ("martin", "thoma", "agnes"),
+        {"thoma": "warrior", "agnes": "warrior"},
+        {"thoma": _WARRIOR, "agnes": _WARRIOR},
     ),
-    Composition("balanced", "균등", ("garret", "elaine", "bern"), {}),
+    Composition("balanced", "균등", ("martin", "aude", "gilles"), {}),
     Composition(
         # 옛 "마도 편중" 조합을 대체한다(설계 2026-09-08). 전원이 방어형이라 적을
         # 못 죽인다 — "이길 수 없는 조합에서 단장이 무엇을 하는가" 가 더 선명하다.
         "defenders",
         "방패병 몰빵",
-        ("bern", "kyle", "thomas"),
-        {"kyle": "defender", "thomas": "defender"},
-        {"kyle": _DEFENDER, "thomas": _DEFENDER},
+        ("gilles", "thoma", "agnes"),
+        {"thoma": "defender", "agnes": "defender"},
+        {"thoma": _DEFENDER, "agnes": _DEFENDER},
     ),
-    Composition("no_healer", "힐러 없음", ("garret", "bern", "thomas"), {}),
+    Composition("no_healer", "힐러 없음", ("martin", "gilles", "agnes"), {}),
 )
 
 

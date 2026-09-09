@@ -8,7 +8,7 @@ from eval.metrics import aggregate
 
 def test_지표는_트레이스_후처리만으로_나온다():
     """러너를 고쳐야 지표가 나오면 실험이 코어를 건드리게 된다(기획서 §3.1)."""
-    m = _run_once(1, ("garret", "elaine", "kyle"), {}, orchestrator=True, adaptation=True)
+    m = _run_once(1, ("martin", "aude", "thoma"), {}, orchestrator=True, adaptation=True)
     assert m.outcome in ("win", "lose", "retreat", "draw")
     assert m.party_size == 3 and 0 <= m.survivors <= 3
     assert m.turns > 0 and m.calls > 0
@@ -17,7 +17,7 @@ def test_지표는_트레이스_후처리만으로_나온다():
 
 def test_집계는_비율과_평균을_낸다():
     runs = [
-        _run_once(s, ("garret", "elaine", "kyle"), {}, orchestrator=True, adaptation=True)
+        _run_once(s, ("martin", "aude", "thoma"), {}, orchestrator=True, adaptation=True)
         for s in range(1, 4)
     ]
     a = aggregate(runs)

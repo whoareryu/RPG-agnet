@@ -73,7 +73,6 @@ const STATUS_KO: Record<string, string> = {
   bless: "축복",
   blind: "실명",
   slow: "둔화",
-  ward: "마법 결계",
 };
 
 export default function Dashboard({ events, names }: { events: TraceEvent[]; names: Record<string, string> }) {

@@ -200,6 +200,14 @@ pre.json {
 .stream-item.k-compliance.deviate, .stream-item.k-flee { border-left-color: var(--color-danger); }
 .stream-item.k-turn_start { color: var(--color-text-faint); font-size: 12.5px; margin-top: 8px; }
 .stream-item.k-odds, .stream-item.k-context { color: var(--color-text-faint); font-size: 12.5px; }
+/* v3 의 다섯 — 뿔피리·쓰러짐·호칭·회수·학습 카드(기획서 v3 §6.0·§6.8·§8.2·§8.4·§8.5).
+   「토마가 굴로 끌려갔다」가 「빗나갔다」와 똑같이 생기면 안 된다(QA 2026-09-09 U10). */
+.stream-item.k-horn { border-left-color: var(--color-accent-2); font-weight: 600; }
+.stream-item.k-casualty { border-left-color: var(--color-danger); font-weight: 600; }
+.stream-item.k-boss_named, .stream-item.k-cards {
+  border-left-color: var(--color-accent); font-weight: 600;
+}
+.stream-item.k-recovery { border-left-color: var(--color-warn); }
 .stream-item.k-mission_end, .stream-item.k-run_end { font-weight: 700; }
 
 /* 2·3 패널 */

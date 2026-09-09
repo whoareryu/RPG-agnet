@@ -397,3 +397,12 @@ def test_판이_바뀌면_묵은_뿔피리_신호를_버린다():
     s.blow_horn()
     assert s.horn_signal(1) is False, "묵은 신호가 다음 판 1턴에 터졌다"
     assert s.horn_signal(2) is False, "버린 신호가 되살아났다"
+
+
+def test_회수_요청의_오타는_거절된다(client):
+    """QA 2026-09-09 T7 — `pay` 에 기본값이 있어 `{"payy": [...]}` 오타가 200 을
+    받고 큐를 소비했다. 전원 영구 상실로 확정되고 **되돌릴 방법이 없었다.**
+    """
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude"], "seed": 5}).json()["run_id"]
+    assert client.post(f"/runs/{run_id}/recovery", json={"payy": ["aude"]}).status_code == 422
+    assert client.post(f"/runs/{run_id}/recovery", json={}).status_code == 422

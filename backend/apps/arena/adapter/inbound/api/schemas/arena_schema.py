@@ -3,7 +3,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateRunRequest(BaseModel):
@@ -33,6 +33,14 @@ class DirectivesRequest(BaseModel):
 
 
 class RecoveryRequest(BaseModel):
-    """회수 결정 — 지불할 대원 id 목록(기획서 v3 §6.8). 비면 전원 미지불이다."""
+    """회수 결정 — 지불할 대원 id 목록(기획서 v3 §6.8). 빈 목록은 전원 미지불이다.
 
-    pay: list[str] = []
+    `pay` 는 **필수**다. 기본값을 두면 `{"payy": [...]}` 같은 오타가 200 을 받고
+    큐를 소비해 전원 영구 상실로 확정된다 — 진짜 결정은 409 를 받고, 되돌릴
+    방법이 없다(QA 2026-09-09 T7). "게임은 막지 않는다" 는 전략 얘기지
+    오타 얘기가 아니다. 모르는 필드도 막는다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    pay: list[str]

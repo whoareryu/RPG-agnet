@@ -10,7 +10,7 @@ const INTRO: Record<string, { title: string; body: string }> = {
   },
   e2: {
     title: "E2 · 보스 적응 ON / OFF",
-    body: "바르가스가 우리를 읽는 것이 판을 바꾸는가. 관측 네 가지(같은 자의 반복 공격·마법 편중·반복된 치유·방어 일변도)에 대응 네 가지가 붙는다.",
+    body: "굴의 그것이 우리를 읽는 것이 판을 바꾸는가. 관측 네 가지(같은 자의 반복 공격·전열이 버팀·반복된 치유·방어 일변도)에 대응 네 가지가 붙는다.",
   },
   e3: {
     title: "E3 · 성향별 행동 분포",
@@ -18,22 +18,28 @@ const INTRO: Record<string, { title: string; body: string }> = {
   },
 };
 
-async function load<T>(name: string): Promise<T | null> {
+// 백엔드가 꺼진 것과 실험을 아직 안 돌린 것은 다르다. 둘 다 null 로 만들면
+// 화면이 "아직 결과가 없다" 고 거짓말한다(QA 2026-09-09 U15).
+type Load<T> = { data: T | null; down: boolean };
+
+async function load<T>(name: string): Promise<Load<T>> {
   try {
     const r = await backendFetch(`/experiments/${name}`);
-    return r.ok ? ((await r.json()) as T) : null;
+    return { data: r.ok ? ((await r.json()) as T) : null, down: false };
   } catch {
-    return null;
+    return { data: null, down: true };
   }
 }
 
 export default async function ExperimentsPage() {
-  const [e1, e2, e3] = await Promise.all([
+  const [r1, r2, r3] = await Promise.all([
     load<AbResult>("e1"),
     load<AbResult>("e2"),
     load<E3Result>("e3"),
   ]);
-  const none = !e1 && !e2 && !e3;
+  const [e1, e2, e3] = [r1.data, r2.data, r3.data];
+  const down = r1.down && r2.down && r3.down;
+  const none = !down && !e1 && !e2 && !e3;
 
   return (
     <main className="page page-narrow stack" style={{ gap: 18 }}>
@@ -44,6 +50,13 @@ export default async function ExperimentsPage() {
         실제 모델로 다시 돌리면 같은 표에 다른 숫자가 들어간다.
       </p>
 
+      {down && (
+        <div className="card" style={{ borderColor: "var(--color-danger)" }}>
+          <p className="small" style={{ color: "var(--color-danger)", margin: 0 }}>
+            백엔드에 닿지 못했다. 결과가 없는 것이 아니라 <strong>물어보지 못한 것</strong>이다 — 백엔드를 띄우고 새로고침한다.
+          </p>
+        </div>
+      )}
       {none && (
         <div className="card">
           <p className="small muted">

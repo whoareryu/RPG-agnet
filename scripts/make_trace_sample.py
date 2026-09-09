@@ -37,14 +37,15 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    # 시드 1 · 가렛/카일/세라핀: 16턴 동안 이탈 8회 · 보스 적응 · 재계획 · 포기가
-    # 전부 나오고, **카일이 딸을 이유로 전장을 벗어나는 장면**과 지혜 마스킹이
-    # 걸린 판단이 함께 들어 있다. 데모 시나리오(기획서 §11.3)와 진입 화면
-    # 3장면 카드의 재료가 이 한 판에 있다.
     # 편성: 마르탱(중장병) · 오드(전령관) · 아녜스(약탈병). 아녜스에게 딸이 있어
-    # 이탈 장면의 재료가 된다. 시드 11 은 flee·abandon·casualty·boss_adapt 가 한 판에 다 나온다.
+    # 이탈 장면의 재료가 된다.
+    #
+    # 시드 31 은 v3 의 하이라이트가 **한 판에 다 나온다**: abandon · flee ·
+    # replan_trigger · boss_adapt · summon · cards · casualty · recovery ·
+    # boss_named · 방침 이탈. 밸런스를 튜닝하면 이 시드도 다시 골라야 한다
+    # (`scripts/make_trace_sample.py` 를 돌리면 계약 테스트가 말해 준다).
     cfg = RunConfig(
-        seed=11,
+        seed=31,
         lineup=("martin", "aude", "agnes"),
         allocations={},
         classes={},
@@ -58,10 +59,13 @@ def main() -> None:
         "sample-one-run",
         cfg,
         build_party(cfg),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         clock=lambda: "2026-09-07T00:00:00.000+00:00",
         card_pool=CARDS,
+        # 회수 결정도 샘플에 넣는다 — 아무도 안 되찾는 쪽이 v3 의 기본값이고,
+        # 그래야 recovery·boss_named·「섭식」 카드가 한 파일에 다 들어온다.
+        recovery=lambda ids, costs, tracer: set(),
     )
     if args.stdout:
         # 판정 뷰만 낸다 — ts 와 timing 은 매번 다르고 판단이 아니다(설계 §3.4).

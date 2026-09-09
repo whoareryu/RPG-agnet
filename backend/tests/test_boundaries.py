@@ -8,6 +8,7 @@
 """
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,44 @@ def test_행운은_판단에_개입하지_않는다():
     assert hits <= 허용, f"굴림 밖에서 luck 을 읽는다: {hits - 허용}"
 
 
+def _코드_어휘(py: Path) -> list[str]:
+    """식별자와 문자열 리터럴만 모은다. **주석과 독스트링은 뺀다.**
+
+    주석은 "왜 마법을 뺐는가" 를 적는 자리다. 원문을 통째로 훑으면 그 이력을
+    적을 수 없어 주석이 흐려진다 — 실제로 v3 개편 diff 에서 그 일이 일어났다
+    (QA 2026-09-09 C7). 막아야 하는 것은 **코드**에 남은 마법이다.
+    """
+    tree = ast.parse(py.read_text(encoding="utf-8"))
+    말: list[str] = []
+    독스트링 = {
+        n
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        for n in [ast.get_docstring(node, clean=False)]
+        if n
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            말.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            말.append(node.attr)
+        elif isinstance(node, ast.arg):
+            말.append(node.arg)
+        elif isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            말.append(node.name)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value not in 독스트링:
+                말.append(node.value)
+    return 말
+
+
+def _낱말로_있다(원문: str, 낱말: str) -> bool:
+    """영문은 낱말 경계로, 한글은 그대로 — `reward` 의 `ward` 를 잡지 않는다."""
+    if 낱말.isascii():
+        return re.search(rf"(?<![A-Za-z]){re.escape(낱말)}(?![A-Za-z])", 원문) is not None
+    return 낱말 in 원문
+
+
 def test_마법은_어디에도_남아_있지_않다():
     """기획서 v3 §0.2 — 회복 주문도, 적 마법사도, 언데드도 없다.
 
@@ -151,8 +190,9 @@ def test_마법은_어디에도_남아_있지_않다():
     hits: list[str] = []
     for root in 뿌리:
         for py in _파일들(root):
-            원문 = py.read_text(encoding="utf-8")
-            for 낱말 in 금지어:
-                if 낱말 in 원문:
-                    hits.append(f"{py}: {낱말}")
+            for 이름 in _코드_어휘(py):
+                for 낱말 in 금지어:
+                    # 부분 문자열이면 `reward`·`forward` 가 걸린다(QA 2026-09-09 C7).
+                    if _낱말로_있다(이름, 낱말):
+                        hits.append(f"{py}: {이름}")
     assert not hits, "마법 흔적이 남았다: " + ", ".join(hits)

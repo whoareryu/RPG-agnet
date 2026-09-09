@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from apps.arena.adapter.outbound.repositories.jsonl_run_repository import JsonlRunStore
@@ -120,3 +121,33 @@ def test_샘플_트레이스는_계약을_지킨다():
     assert {"plan", "context", "compliance", "decision", "resolution", "odds"} <= kinds
     assert {"abandon", "replan_trigger", "boss_adapt", "flee"} <= kinds
     assert any(e.kind == "compliance" and e.payload["verdict"] == "deviate" for e in events)
+    # v3 의 심장도 샘플에 있어야 프론트가 화면을 만들 수 있다.
+    assert {"cards", "casualty", "recovery", "boss_named"} <= kinds
+
+
+def test_샘플_트레이스가_낡지_않았다():
+    """QA 2026-09-09 C10·V11 — 미션 번호를 바꾼 커밋이 샘플을 안 만들어 두는 바람에
+    재생성하면 359줄 중 358줄이 바뀌는 상태였다. **낡았는지 묻는 검사가 양쪽 어디에도
+    없었다.** 프론트가 이 파일로 계약을 확인하므로 낡은 샘플은 거짓 초록을 만든다.
+
+    지금 코드가 만드는 판정 뷰와 커밋된 파일이 같은지 본다(ts·timing 은 판단이 아니라 뺀다).
+    """
+    import subprocess
+    import sys
+
+    script = SAMPLE.parents[2] / "scripts" / "make_trace_sample.py"
+    out = subprocess.run(
+        [sys.executable, str(script), "--stdout"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=SAMPLE.parents[2] / "backend",
+    ).stdout.splitlines()
+    committed = [
+        json.dumps(judgment_view(from_json(line)), ensure_ascii=False, sort_keys=True)
+        for line in SAMPLE.read_text(encoding="utf-8").splitlines()
+    ]
+    assert out == committed, (
+        f"샘플이 낡았다 — `uv run python ../scripts/make_trace_sample.py` 를 돌린다 "
+        f"(지금 {len(out)}줄 vs 커밋된 {len(committed)}줄)"
+    )

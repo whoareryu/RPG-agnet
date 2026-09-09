@@ -86,7 +86,7 @@ class FakeModel:
         if give_up:
             return {
                 "assessment": (
-                    f"승산 {odds:.2f}. 힐러 {'있음' if has_healer else '없음'}. "
+                    f"승산 {odds:.2f}. 전령관 {'있음' if has_healer else '없음'}. "
                     "더 싸우면 사람을 잃는다."
                 ),
                 "worth_fighting": False,
@@ -157,12 +157,12 @@ class FakeModel:
 
         stuck = "" if can_escape else f" 도주 성공률이 {escape:.0%}라 물러설 수도 없다."
         text = {
-            "rush": "힐러가 없으니 오래 못 버틴다. 속공으로 짧게 끝낸다.",
-            "attrition": "힐러가 있다. 전열이 버티고 후열이 갉아먹는다.",
+            "rush": "전령관이 없으니 오래 못 버틴다. 속공으로 짧게 끝낸다.",
+            "attrition": "전령관이 있다. 전열이 버티고 후열이 갉아먹는다.",
             "defensive": "승산이 반반 아래다. 방어하며 기회를 본다.",
         }[strategy] + stuck
         return {
-            "assessment": f"승산 {odds:.2f}. 힐러 {'있음' if has_healer else '없음'}. {text}",
+            "assessment": f"승산 {odds:.2f}. 전령관 {'있음' if has_healer else '없음'}. {text}",
             "worth_fighting": True,
             "strategy": strategy,
             "formation": formation,

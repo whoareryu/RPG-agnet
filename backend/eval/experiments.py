@@ -44,14 +44,15 @@ _DEFENDER = {"con": 8, "str_": 6, "wis": 4}
 COMPOSITIONS: tuple[Composition, ...] = (
     Composition(
         "warriors",
-        "전사 몰빵",
+        "중장병 몰빵",
         ("martin", "thoma", "agnes"),
         {"thoma": "warrior", "agnes": "warrior"},
         {"thoma": _WARRIOR, "agnes": _WARRIOR},
     ),
     Composition("balanced", "균등", ("martin", "aude", "gilles"), {}),
     Composition(
-        # 옛 "마도 편중" 조합을 대체한다(설계 2026-09-08). 전원이 방어형이라 적을
+        # 옛 "마법사 몰빵" 조합을 대체한다(v3 개편, 2026-09-08 — 마법 전면 배제).
+        # 전원이 방어형이라 적을
         # 못 죽인다 — "이길 수 없는 조합에서 단장이 무엇을 하는가" 가 더 선명하다.
         "defenders",
         "방패병 몰빵",
@@ -59,7 +60,7 @@ COMPOSITIONS: tuple[Composition, ...] = (
         {"thoma": "defender", "agnes": "defender"},
         {"thoma": _DEFENDER, "agnes": _DEFENDER},
     ),
-    Composition("no_healer", "힐러 없음", ("martin", "gilles", "agnes"), {}),
+    Composition("no_healer", "전령관 없음", ("martin", "gilles", "agnes"), {}),
 )
 
 

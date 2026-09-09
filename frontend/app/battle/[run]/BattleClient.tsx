@@ -77,7 +77,7 @@ export default function BattleClient({ runId }: { runId: string }) {
   const missionStart = events.find((e) => e.kind === "mission_start");
   const title = missionStart ? String((missionStart.payload.name as string) ?? "") : "";
 
-  // 그것에게 이름이 붙었나(기획서 v3 §8.5). 붙으면 15회차까지 남는다.
+  // 그것에게 이름이 붙었나(기획서 v3 §8.5). 붙으면 계약이 끝날 때까지 남는다.
   const bossName = useMemo(() => {
     const named = events.findLast((e) => e.kind === "boss_named");
     return named ? String(named.payload.after ?? "") : null;

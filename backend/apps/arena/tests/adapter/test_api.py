@@ -277,8 +277,14 @@ def test_완료된_런은_상한을_먹지_않는다(tmp_path):
 # ─── 뿔피리 (기획서 v3 §8.2) ────────────────────────────────────────────
 
 
-def test_뿔피리는_세_번까지만_받는다(client):
-    """계약 기간 3회. 무한이면 유저가 조종하는 게임이 된다(§0.1 위반)."""
+def test_뿔피리는_불_때마다_잔여가_준다(client):
+    """계약 기간 3회. 무한이면 유저가 조종하는 게임이 된다(§0.1 위반).
+
+    **HTTP 로는 한 판에 한 번밖에 못 분다** — 불면 그 판이 그 자리에서 끝나기
+    때문이다(§8.2). 그래서 A단계의 2출동 계약으로는 3번째 충전에 닿지 못한다.
+    상한 분기 자체는 `test_뿔피리_세_번을_쓰면_네_번째는_거부된다` 가 세션
+    단위로 실제로 지난다(QA 2026-09-09 C5).
+    """
     run_id = client.post("/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 5}).json()[
         "run_id"
     ]
@@ -287,11 +293,10 @@ def test_뿔피리는_세_번까지만_받는다(client):
         r = client.post(f"/runs/{run_id}/horn")
         if r.status_code == 200:
             남은.append(r.json()["horn_left"])
-        elif r.status_code == 409:
-            break  # 판이 먼저 끝났으면 그것도 정상이다
+        else:
+            assert r.status_code == 409, r.text
+            break  # 판이 먼저 끝났거나 신호가 아직 안 닿았다
     assert 남은 == list(range(2, 2 - len(남은), -1)), 남은
-    # 다 쓰거나 판이 끝나면 더는 안 받는다.
-    assert client.post(f"/runs/{run_id}/horn").status_code in (409, 200)
 
 
 def test_없는_런에_뿔피리를_불면_404(client):
@@ -355,6 +360,33 @@ def test_뿔피리_세_번을_쓰면_네_번째는_거부된다():
         s.blow_horn()
         assert s.horn_signal(5) is True  # 판 중간 턴 — 신호가 닿는다
     assert s.horn_left == 0
+    # 네 번째. 라우터가 이 문장을 그대로 409 로 실어 보낸다.
+    assert s.horn_refusal() == "뿔피리를 다 썼다"
+
+
+def test_뿔피리_거절_사유_넷을_모두_지난다():
+    """QA 2026-09-09 C5 — 거절 분기가 라우터 안에 있어 HTTP 로는 한 판에 한 번밖에
+    못 불어(불면 판이 끝난다) 어떤 테스트도 지나지 못했다. 세션이 판단하므로
+    이제 넷을 다 지난다.
+    """
+    from apps.arena.adapter.inbound.api.v1.arena_router import RunSession
+
+    s = RunSession("r", None)  # type: ignore[arg-type]
+    assert s.horn_refusal() == "지금은 전투 중이 아니다"
+
+    s.in_battle.set()
+    assert s.horn_refusal() is None
+
+    s.blow_horn()
+    assert s.horn_refusal() == "이미 뿔피리가 울렸다"
+
+    s.horn_signal(5)  # 신호가 닿았다
+    s.horn_left = 0
+    assert s.horn_refusal() == "뿔피리를 다 썼다"
+
+    s.horn_left = 3
+    s.done.set()
+    assert s.horn_refusal() == "이미 끝난 판이다"
 
 
 def test_판이_바뀌면_묵은_뿔피리_신호를_버린다():

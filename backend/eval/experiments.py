@@ -178,7 +178,9 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
             if progress:
                 progress(
                     f"E2 {comp.label} 적응 {side.upper()}: "
-                    f"완주 {cell[side]['clear_rate']:.0%} · 판 승률 {cell[side]['win_rate']:.0%}"
+                    f"완주 {cell[side]['clear_rate']:.0%} · "
+                    f"발동 {cell[side]['avg_adaptations']}회/판 · "
+                    f"그중 무효 {cell[side]['adapt_no_change_rate']:.0%}"
                 )
         out.append(
             {

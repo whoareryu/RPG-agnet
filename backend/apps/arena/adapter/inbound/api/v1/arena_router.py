@@ -85,6 +85,26 @@ class RunSession:
         self.awaiting_recovery = threading.Event()
         self.finished_at: float | None = None
 
+    def horn_refusal(self) -> str | None:
+        """지금 뿔피리를 받을 수 없다면 그 이유. 받을 수 있으면 None.
+
+        라우터가 아니라 세션이 판단한다 — HTTP 로는 한 판에 한 번밖에 못 불어
+        (불면 그 판이 끝난다) 상한·중복 분기를 어떤 테스트도 지나지 못했다
+        (QA 2026-09-09 C5). 판단이 세션에 있으면 단위로 전부 지날 수 있다.
+        """
+        if self.done.is_set():
+            return "이미 끝난 판이다"
+        if self.horn_left <= 0:
+            return "뿔피리를 다 썼다"
+        # 이미 울린 신호가 아직 안 닿았다. 또 받으면 횟수만 닳고 효과는 하나다.
+        if self.horn_pending.is_set():
+            return "이미 뿔피리가 울렸다"
+        # 전투 중 개입이다(기획서 v3 §8.2). 인터미션이나 회수 결정 중에 받으면
+        # 신호가 다음 판 첫 턴까지 묵혀 있다가 엉뚱한 자리에서 터진다.
+        if not self.in_battle.is_set():
+            return "지금은 전투 중이 아니다"
+        return None
+
     def blow_horn(self) -> None:
         self.horn_left -= 1
         self.horn_pending.set()
@@ -343,17 +363,9 @@ def build_app(
         session = sessions.get(run_id)
         if session is None:
             raise HTTPException(status_code=404, detail="진행 중인 런이 아니다")
-        if session.done.is_set():
-            raise HTTPException(status_code=409, detail="이미 끝난 판이다")
-        if session.horn_left <= 0:
-            raise HTTPException(status_code=409, detail="뿔피리를 다 썼다")
-        # 이미 울린 신호가 아직 안 닿았다. 또 받으면 횟수만 닳고 효과는 하나다.
-        if session.horn_pending.is_set():
-            raise HTTPException(status_code=409, detail="이미 뿔피리가 울렸다")
-        # 전투 중 개입이다(기획서 v3 §8.2). 인터미션이나 회수 결정 중에 받으면
-        # 신호가 다음 판 첫 턴까지 묵혀 있다가 엉뚱한 자리에서 터진다.
-        if not session.in_battle.is_set():
-            raise HTTPException(status_code=409, detail="지금은 전투 중이 아니다")
+        거절 = session.horn_refusal()
+        if 거절:
+            raise HTTPException(status_code=409, detail=거절)
         session.blow_horn()
         return {"status": "accepted", "horn_left": session.horn_left}
 

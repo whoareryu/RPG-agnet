@@ -44,6 +44,14 @@ class RunMetrics:
     party_size: int
     deviations: int
     adaptations: int
+    # 발동했지만 **상태가 안 바뀐** 적응. 승패로는 안 보이는 것을 여기서 본다 —
+    # E2 가 "아무것도 재지 못한다" 는 것이 지표 탓인지 메커니즘 탓인지 갈린다
+    # (QA 2026-09-09 V5).
+    adaptations_no_change: int
+    # 적응이 지목한 대상을 보스가 **실제로 때렸는가**. 상태는 바뀌는데 승패가
+    # 안 움직이면 그 사이 어디가 끊겼는지 이 값이 말한다(QA 2026-09-09 V5).
+    focus_strikes: int
+    focus_followed: int
     replans: int
     fallbacks: int
     actions: dict[str, int]
@@ -164,6 +172,12 @@ def metrics_of(events: Sequence[TraceEvent]) -> RunMetrics:
             1 for e in events if e.kind == "compliance" and e.payload["verdict"] == "deviate"
         ),
         adaptations=sum(1 for e in events if e.kind == "boss_adapt"),
+        adaptations_no_change=sum(
+            1
+            for e in events
+            if e.kind == "boss_adapt" and (e.payload.get("effect") or {}).get("no_change")
+        ),
+        **_focus_follow(events),
         replans=sum(1 for e in events if e.kind == "replan_trigger"),
         fallbacks=sum(
             1
@@ -172,6 +186,28 @@ def metrics_of(events: Sequence[TraceEvent]) -> RunMetrics:
         ),
         actions=actions,
     )
+
+
+def _focus_follow(events: Sequence[TraceEvent]) -> dict[str, int]:
+    """적응이 대상을 지목한 뒤, 보스의 타격이 그 대상에 갔는가.
+
+    지목은 `boss_adapt` 의 effect.after 이고, 그 뒤 같은 보스의 `resolution`
+    타격을 센다. 트레이스만 읽는다 — 러너를 고치지 않는다(기획서 §3.1).
+    """
+    focus: str | None = None
+    boss: str | None = None
+    strikes = followed = 0
+    for e in events:
+        if e.kind == "boss_adapt":
+            boss = e.actor
+            focus = (e.payload.get("effect") or {}).get("after")
+        elif e.kind == "mission_start":
+            focus = boss = None  # 판이 바뀌면 지목도 사라진다
+        elif e.kind == "resolution" and focus and e.actor == boss:
+            for s in e.payload.get("strikes", []):
+                strikes += 1
+                followed += s.get("target") == focus
+    return {"focus_strikes": strikes, "focus_followed": followed}
 
 
 def aggregate(runs: Sequence[RunMetrics]) -> dict[str, Any]:
@@ -222,6 +258,14 @@ def aggregate(runs: Sequence[RunMetrics]) -> dict[str, Any]:
         "avg_plans": round(sum(r.plans for r in runs) / n, 1),
         "avg_deviations": round(sum(r.deviations for r in runs) / n, 1),
         "avg_adaptations": round(sum(r.adaptations for r in runs) / n, 1),
+        # 발동한 적응 중 상태를 못 바꾼 비율. 1.0 에 가까우면 적응은 로그에만 있다.
+        "adapt_no_change_rate": round(
+            sum(r.adaptations_no_change for r in runs) / max(1, sum(r.adaptations for r in runs)), 3
+        ),
+        # 지목한 대상을 실제로 때린 비율. 낮으면 적응이 상태만 바꾸고 행동에 못 닿은 것이다.
+        "focus_follow_rate": round(
+            sum(r.focus_followed for r in runs) / max(1, sum(r.focus_strikes for r in runs)), 3
+        ),
         "fallbacks": sum(r.fallbacks for r in runs),
         # 성향별 행동 분포(E3)의 재료. 여기서 미리 비율로 만들어 둔다.
         "action_share": {k: round(v / acted, 3) for k, v in sorted(action_total.items())},

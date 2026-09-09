@@ -24,6 +24,10 @@ export type Cell = {
   avg_plans: number;
   avg_deviations: number;
   avg_adaptations: number;
+  // 적응이 상태를 바꿨는가, 그리고 그 지목을 보스가 실제로 때렸는가.
+  // 승패가 안 움직일 때 어디가 끊겼는지 이 둘이 말한다(QA 2026-09-09 V5).
+  adapt_no_change_rate: number;
+  focus_follow_rate: number;
   action_share: Record<string, number>;
 };
 
@@ -145,6 +149,12 @@ export default function AbChart({ data, flag }: { data: AbResult; flag: string }
                 </span>
               </div>
             ))}
+            {data.experiment === "e2" && c.on.avg_adaptations > 0 && (
+              <div className="small faint mono">
+                적응 {c.on.avg_adaptations}회/판 · 무효 {Math.round(c.on.adapt_no_change_rate * 100)}% · 지목 명중{" "}
+                {Math.round(c.on.focus_follow_rate * 100)}%
+              </div>
+            )}
             {(
               [
                 ["완주", c.paired],

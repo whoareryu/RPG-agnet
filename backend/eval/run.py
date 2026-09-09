@@ -52,6 +52,14 @@ def _print_table(result: dict[str, Any]) -> None:
                     f"{a['survival_rate']:>5.0%} {a['avg_taken']:>6.2f} "
                     f"{a['avg_turns']:>6.1f} {a['max_calls']:>7}"
                 )
+            # 적응이 실제로 상태를 바꿨는가 — 승패에 안 보이는 것을 여기서 본다.
+            if result["experiment"] == "e2":
+                print(
+                    f"{'':<12} {'적응':<5} ON {c['on']['avg_adaptations']}회/판"
+                    f"(무효 {c['on']['adapt_no_change_rate']:.0%}) · "
+                    f"OFF {c['off']['avg_adaptations']}회/판 · "
+                    f"지목 명중 {c['on']['focus_follow_rate']:.0%}"
+                )
             # 두 축을 함께 찍는다. 완주만 보면 감독이 전원을 데리고 나온 판이
             # 벌점이 되어 §8.1 의 "회복력" 주장을 스스로 반증한다.
             for label, key in (("완주", "paired"), ("생환", "paired_home")):

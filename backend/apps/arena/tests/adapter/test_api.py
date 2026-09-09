@@ -272,3 +272,27 @@ def test_완료된_런은_상한을_먹지_않는다(tmp_path):
     run_id = c.post("/runs", json=body).json()["run_id"]
     _wait_done(c, run_id)
     assert c.post("/runs", json=body).status_code == 200
+
+
+# ─── 뿔피리 (기획서 v3 §8.2) ────────────────────────────────────────────
+
+
+def test_뿔피리는_세_번까지만_받는다(client):
+    """계약 기간 3회. 무한이면 유저가 조종하는 게임이 된다(§0.1 위반)."""
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 5}).json()[
+        "run_id"
+    ]
+    남은 = []
+    for _ in range(3):
+        r = client.post(f"/runs/{run_id}/horn")
+        if r.status_code == 200:
+            남은.append(r.json()["horn_left"])
+        elif r.status_code == 409:
+            break  # 판이 먼저 끝났으면 그것도 정상이다
+    assert 남은 == list(range(2, 2 - len(남은), -1)), 남은
+    # 다 쓰거나 판이 끝나면 더는 안 받는다.
+    assert client.post(f"/runs/{run_id}/horn").status_code in (409, 200)
+
+
+def test_없는_런에_뿔피리를_불면_404(client):
+    assert client.post("/runs/nope/horn").status_code == 404

@@ -16,6 +16,7 @@ export const KINDS = [
   "abandon",
   "flee",
   "summon",
+  "horn",
   "casualty",
   "mission_end",
   "intermission_start",

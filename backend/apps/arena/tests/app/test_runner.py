@@ -26,7 +26,7 @@ def _config(
     )
 
 
-def _run(config, run_id="r"):
+def _run(config, run_id="r", horn=None):
     return run(
         run_id,
         config,
@@ -34,6 +34,7 @@ def _run(config, run_id="r"):
         model_factory=lambda: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         clock=lambda: "T",
+        horn=horn,
     )
 
 
@@ -234,3 +235,47 @@ def test_사망하거나_끌려간_단원은_다음_판에_나오지_않는다()
     raise AssertionError(
         "1판에 사망·끌려감이 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다"
     )
+
+
+# ─── 뿔피리 (기획서 v3 §8.2) ────────────────────────────────────────────
+
+
+def _horn_at(turn: int):
+    """지정한 턴에 한 번만 울리는 뿔피리. 세션의 큐를 흉내낸다."""
+    state = {"blown": False}
+
+    def horn(battle_turn: int) -> bool:
+        if battle_turn >= turn and not state["blown"]:
+            state["blown"] = True
+            return True
+        return False
+
+    return horn
+
+
+def test_뿔피리를_불면_그_자리에서_판이_끝난다():
+    """기획서 v3 §8.2 — 즉시 이탈. 전멸은 피하지만 목표는 실패하고 보수는 없다."""
+    rec = _run(_config(seed=3), horn=_horn_at(2))
+    res = rec.results[0]
+    assert res.outcome == "retreat"
+    assert res.turns <= 3, "뿔피리를 불었는데 판이 계속됐다"
+    assert [e.kind for e in rec.events].count("horn") == 1
+
+
+def test_뿔피리로_끝난_판은_철수지_실패가_아니다():
+    """「철수」가 벌점이 아닌 것이 핵심이다(기획서 v3 §7.1b)."""
+    rec = _run(_config(seed=3), horn=_horn_at(2))
+    assert rec.results[0].grade == "withdraw"
+
+
+def test_뿔피리를_불지_않으면_판이_그대로_돈다():
+    없음 = _run(_config(seed=3))
+    불었다 = _run(_config(seed=3), horn=_horn_at(2))
+    assert 없음.results[0].turns > 불었다.results[0].turns
+
+
+def test_뿔피리는_전원을_살려_내보낸다():
+    rec = _run(_config(seed=3), horn=_horn_at(2))
+    res = rec.results[0]
+    assert not res.dead and not res.taken, "뿔피리를 불었는데 사람을 잃었다"
+    assert len(res.fled) == 3

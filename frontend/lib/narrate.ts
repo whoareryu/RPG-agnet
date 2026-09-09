@@ -147,6 +147,9 @@ export function narrate(e: TraceEvent, names: Names): string {
       const v = Math.round(Number(p.odds) * 100);
       return `단장이 결정한다: "${p.rationale}" (승산 ${v}%). 전원 철수.`;
     }
+    case "horn":
+      // 기획서 v3 §8.2 — 유저의 유일한 전투 중 개입. 즉시 이탈, 보수 0.
+      return `후방에서 뿔피리가 울린다. 대열이 물러선다 — ${(p.withdrew as string[] ?? []).length}명 전원.`;
     case "casualty": {
       // 기획서 v3 §6.0 — HP 0 은 사망이 아니다. 전투가 끝난 뒤에 갈린다.
       const verdict = String(p.verdict);

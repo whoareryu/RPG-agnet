@@ -34,7 +34,7 @@ from apps.arena.app.use_cases.intermission import (
     run_intermission,
 )
 from apps.arena.app.use_cases.runner import RunRecord, run
-from apps.arena.domain.constants.balance import FREE_POINTS, MAX_CALLS, STAT_BASE
+from apps.arena.domain.constants.balance import FREE_POINTS, HORN_CHARGES, MAX_CALLS, STAT_BASE
 from apps.arena.domain.entities.trace_event import TraceEvent
 from apps.arena.domain.entities.types import RunConfig
 from apps.arena.domain.ports.ports import DecisionModel, RunStore
@@ -65,7 +65,22 @@ class RunSession:
         # 이어져야 하므로 대기에 상한을 둔다(설계 §11.1).
         self.directives: queue.Queue[DirectivesRequest] = queue.Queue()
         self.awaiting_input = threading.Event()
+        # 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). 계약 기간 3회.
+        # 잔여 횟수는 여기가 센다. core 는 "지금 울렸나" 만 답받는다.
+        self.horn_left = HORN_CHARGES
+        self.horn_pending = threading.Event()
         self.finished_at: float | None = None
+
+    def blow_horn(self) -> None:
+        self.horn_left -= 1
+        self.horn_pending.set()
+
+    def horn_signal(self, _turn: int) -> bool:
+        """턴 시작에 core 가 묻는다. 울렸으면 한 번만 참을 준다."""
+        if self.horn_pending.is_set():
+            self.horn_pending.clear()
+            return True
+        return False
 
     def emit(self, event: TraceEvent) -> None:
         self.events.append(event)
@@ -239,6 +254,23 @@ def build_app(
         session.directives.put(req)
         return {"status": "accepted"}
 
+    @app.post("/runs/{run_id}/horn", dependencies=guard)
+    def horn(run_id: str) -> dict[str, Any]:
+        """뿔피리 — 즉시 이탈(기획서 v3 §8.2). 계약 기간 3회.
+
+        전멸은 피하지만 목표는 실패하고 보수는 없다. 부는 것은 전령관이다 —
+        편성에 없으면 신호가 늦는다(그 지연은 core 가 판단한다).
+        """
+        session = sessions.get(run_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="진행 중인 런이 아니다")
+        if session.done.is_set():
+            raise HTTPException(status_code=409, detail="이미 끝난 판이다")
+        if session.horn_left <= 0:
+            raise HTTPException(status_code=409, detail="뿔피리를 다 썼다")
+        session.blow_horn()
+        return {"status": "accepted", "horn_left": session.horn_left}
+
     @app.get("/runs", dependencies=guard)
     def recent(limit: int = 20) -> dict[str, Any]:
         return {"runs": store.list_recent(min(limit, 50))}
@@ -299,6 +331,7 @@ def build_app(
                     SeededDice,
                     sink=session,
                     intermission=intermission,
+                    horn=session.horn_signal,
                 )
                 try:
                     store.save(record)

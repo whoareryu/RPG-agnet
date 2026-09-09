@@ -42,8 +42,13 @@ from apps.arena.domain.services.judgment.replan import (
     replan_triggers,
 )
 from apps.arena.domain.services.rules.casualty import resolve_casualty
+from apps.arena.domain.services.rules.grade import grade_of
 
 PartyMember = tuple[Character, BuildChoice, str]  # (캐릭터, 빌드, 말투)
+
+# 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). 턴을 받아 "지금 울렸나"를
+# 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건 호출자의 장부다.
+HornFn = Callable[[int], bool]
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,7 @@ class MissionResult:
     # 쓰러짐 3분기(기획서 v3 §6.0). 기본값이 있는 이유는 옛 기록을 읽을 때다.
     injured: tuple[str, ...] = ()
     taken: tuple[str, ...] = ()
+    grade: str = "failure"
 
 
 @dataclass
@@ -165,6 +171,7 @@ def play_mission(
     orchestrator_on: bool,
     adaptation_on: bool,
     seed: int,
+    horn: HornFn | None = None,
 ) -> MissionResult:
     battle = setup_battle(mission, members, seed, adaptation_on)
     tracer.mission = mission.no
@@ -219,6 +226,18 @@ def play_mission(
         battle.turn += 1
         tracer.turn = battle.turn
         replan.begin_turn(battle.turn)
+
+        # 뿔피리가 울리면 그 자리에서 끝난다. 전멸은 피하지만 목표는 실패하고
+        # 보수는 없다(기획서 v3 §8.2). 소환도 행동도 이번 턴에는 없다.
+        if horn is not None and horn(battle.turn):
+            나온_사람 = [u for u in battle.units.values() if u.faction == battle.party and u.active]
+            battle.retreat_ordered = True
+            for u in 나온_사람:
+                u.fled = True
+            tracer.emit("horn", {"turn": battle.turn, "withdrew": [u.id for u in 나온_사람]})
+            result = outcome(battle)
+            break
+
         _maybe_summon(battle, tracer)
 
         odds_value, odds_bd = odds(battle, battle.party)
@@ -307,6 +326,7 @@ def play_mission(
         dead=tuple(dead),
         injured=tuple(injured),
         taken=tuple(taken),
+        grade=grade_of(result, tuple(dead), tuple(taken), tuple(injured)),
         calls_used=getattr(model, "calls_used", 0) - calls_before,
         plans=plans,
         abandoned=abandoned,
@@ -333,6 +353,7 @@ def run(
     sink: TraceSink | None = None,
     intermission: IntermissionFn | None = None,
     clock: Callable[[], str] | None = None,
+    horn: HornFn | None = None,
 ) -> RunRecord:
     collect = _Collect(sink)
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
@@ -351,6 +372,7 @@ def run(
             orchestrator_on=config.orchestrator_on,
             adaptation_on=config.adaptation_on,
             seed=config.seed,
+            horn=horn,
         )
         record.results.append(res)
         # 죽은 사람은 다음 판에 나오지 않는다. 사망은 소멸이다(기획서 §6.6).

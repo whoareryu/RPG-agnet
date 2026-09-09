@@ -279,3 +279,50 @@ def test_뿔피리는_전원을_살려_내보낸다():
     res = rec.results[0]
     assert not res.dead and not res.taken, "뿔피리를 불었는데 사람을 잃었다"
     assert len(res.fled) == 3
+
+
+# ─── 보스 호칭 (기획서 v3 §8.5) ─────────────────────────────────────────
+
+
+def test_첫_끌려감이_보스의_이름이_된다():
+    """대원들은 그것이 처음 데려간 사람의 이름으로 그것을 부른다."""
+    from dataclasses import replace as _replace
+
+    from content.missions import MISSIONS_A
+
+    # 지원 둘만 보내면 화력이 없어 실제로 쓰러진다 — 조합은 유저의 시험 문제다.
+    여름 = tuple(_replace(m, casualty_tier="summer") for m in MISSIONS_A)
+    for seed in range(1, 80):
+        cfg = _replace(_config(seed=seed, lineup=("aude", "agnes")), missions=여름)
+        rec = _run(cfg)
+        끌려간 = [t for r in rec.results for t in r.taken]
+        if not 끌려간:
+            continue
+        named = [e for e in rec.events if e.kind == "boss_named"]
+        assert len(named) == 1, "호칭은 첫 끌려감에 한 번만 붙는다"
+        assert named[0].payload["after"].endswith("데려간 것")
+        assert named[0].payload["member"] == 끌려간[0]
+        assert rec.boss_title == named[0].payload["after"]
+        return
+    raise AssertionError("끌려감이 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다")
+
+
+def test_호칭이_붙으면_보스가_그_이름으로_선다():
+    """호칭이 실제로 유닛에 입혀지는지 본다.
+
+    "1판에서 끌려가고 2판이 도는" 시드를 찾는 방식은 쓰지 않는다 — 야습이
+    충분히 쉬워 그런 시드가 없고, 있더라도 밸런스가 바뀌면 테스트가 조용히
+    공허해진다. 적용 자체를 직접 잰다.
+    """
+    from apps.arena.app.use_cases.runner import setup_battle
+    from content.missions import MISSION_JUVENILE_BOSS
+
+    members = build_party(_config())
+    호칭 = "토마를 데려간 것"
+    b = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True, boss_title=호칭)
+    보스 = [u for u in b.units.values() if u.is_boss]
+    assert len(보스) == 1 and 보스[0].name == 호칭
+
+    # 호칭이 없으면 원래 이름 그대로다.
+    b2 = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True)
+    assert [u for u in b2.units.values() if u.is_boss][0].name == "굴의 그것"

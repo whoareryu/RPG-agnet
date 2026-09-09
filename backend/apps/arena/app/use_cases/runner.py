@@ -41,6 +41,7 @@ from apps.arena.domain.services.judgment.replan import (
     mark_replanned,
     replan_triggers,
 )
+from apps.arena.domain.services.naming import boss_title as _boss_title
 from apps.arena.domain.services.rules.casualty import resolve_casualty
 from apps.arena.domain.services.rules.grade import grade_of
 
@@ -74,6 +75,8 @@ class RunRecord:
     config: dict[str, Any]
     events: list[TraceEvent] = field(default_factory=list)
     results: list[MissionResult] = field(default_factory=list)
+    # 그것에게는 이름이 없다. 첫 끌려감이 붙인다(기획서 v3 §8.5).
+    boss_title: str | None = None
 
 
 class _Collect:
@@ -103,14 +106,22 @@ def _default_positions(members: list[PartyMember]) -> dict[str, str]:
 
 
 def setup_battle(
-    mission: MissionSpec, members: list[PartyMember], seed: int, adaptation_on: bool
+    mission: MissionSpec,
+    members: list[PartyMember],
+    seed: int,
+    adaptation_on: bool,
+    boss_title: str | None = None,
 ) -> Battle:
     positions = _default_positions(members)
     units = {}
     for c, build, voice in members:
         units[c.id] = unit_from_character(c, build, "party", positions[c.id], voice=voice)  # type: ignore[arg-type]
     for e in mission.enemy.units:
-        units[e.id] = unit_from_enemy(e, "enemy")
+        unit = unit_from_enemy(e, "enemy")
+        if boss_title and unit.is_boss:
+            # 이름 없는 것이 이름을 얻는다. 유저마다 다르다.
+            unit.name = boss_title
+        units[e.id] = unit
     return Battle(
         seed=seed,
         environment=mission.environment,
@@ -172,8 +183,9 @@ def play_mission(
     adaptation_on: bool,
     seed: int,
     horn: HornFn | None = None,
+    boss_title: str | None = None,
 ) -> MissionResult:
-    battle = setup_battle(mission, members, seed, adaptation_on)
+    battle = setup_battle(mission, members, seed, adaptation_on, boss_title)
     tracer.mission = mission.no
     tracer.turn = 0
     calls_before = getattr(model, "calls_used", 0)
@@ -187,7 +199,8 @@ def play_mission(
                 "description": mission.enemy.description,
                 "units": [
                     {"id": u.id, "name": u.name, "position": u.position, "is_boss": u.is_boss}
-                    for u in mission.enemy.units
+                    for u in battle.units.values()
+                    if u.faction == battle.enemy
                 ],
             },
             "environment": battle.environment,
@@ -373,8 +386,20 @@ def run(
             adaptation_on=config.adaptation_on,
             seed=config.seed,
             horn=horn,
+            boss_title=record.boss_title,
         )
         record.results.append(res)
+
+        # 첫 끌려감이 그것의 이름을 만든다(기획서 v3 §8.5). 한 번만이다 —
+        # 회수에 성공해도 호칭은 남는다(2026-09-08 팀 결정 ③).
+        if record.boss_title is None and res.taken:
+            첫_사람 = next(c for c, _, _ in members if c.id == res.taken[0])
+            record.boss_title = _boss_title(첫_사람.name)
+            tracer.emit(
+                "boss_named",
+                {"member": 첫_사람.id, "before": None, "after": record.boss_title},
+                actor=첫_사람.id,
+            )
         # 죽은 사람은 다음 판에 나오지 않는다. 사망은 소멸이다(기획서 §6.6).
         # 인터미션이 없어도 러너가 책임진다 — 예전에는 1판에서 죽은 단원이
         # 2판에 만피로 서 있었다(QA 라운드 1 P0-5).

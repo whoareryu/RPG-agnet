@@ -23,9 +23,9 @@ test("seq 는 1부터 빈틈없이 오른다", () => {
 test("이름 맵은 파티와 적을 전부 안다", () => {
   const names = buildNameMap(events);
   assert.equal(names.agnes, "아녜스");
-  // 샘플에서는 오드가 굴에 끌려가 회수되지 않았다 — 그것이 그 이름을 얻는다
+  // 샘플에서는 마르탱이 굴에 끌려가 회수되지 않았다 — 그것이 그 이름을 얻는다
   // (기획서 v3 §8.5). 이름 맵은 mission_start 가 준 **그때의 이름**을 쓴다.
-  assert.equal(names.minotaur, "오드를 데려간 것");
+  assert.equal(names.minotaur, "마르탱을 데려간 것");
   assert.ok(Object.keys(names).length >= 4);
 });
 

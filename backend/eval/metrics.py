@@ -5,7 +5,7 @@
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -199,8 +199,16 @@ def _focus_follow(events: Sequence[TraceEvent]) -> dict[str, int]:
     strikes = followed = 0
     for e in events:
         if e.kind == "boss_adapt":
+            # `field` 를 봐야 한다. `summon_faster` 의 effect 는
+            # `{"field":"summon_every","after":2}` 라 `2` 가 truthy 로 "지목" 이
+            # 되고, 이후 보스 타격이 전부 **절대 안 맞는** 지목으로 계수되며
+            # 살아 있는 진짜 지목까지 지워졌다 — 방패병 몰빵에서 23% vs 참값 47%
+            # (QA 재검 2026-09-09 R12).
+            eff = e.payload.get("effect") or {}
+            if eff.get("field") != "boss_focus":
+                continue
             boss = e.actor
-            focus = (e.payload.get("effect") or {}).get("after")
+            focus = eff.get("after")
         elif e.kind == "mission_start":
             focus = boss = None  # 판이 바뀌면 지목도 사라진다
         elif e.kind == "resolution" and focus and e.actor == boss:
@@ -253,8 +261,11 @@ def aggregate(runs: Sequence[RunMetrics]) -> dict[str, Any]:
         "avg_taken": round(sum(r.taken for r in runs) / n, 2),
         "avg_dead": round(sum(r.dead for r in runs) / n, 2),
         "avg_turns": round(sum(r.turns for r in runs) / n, 1),
-        "avg_calls": round(sum(r.calls for r in runs) / n, 1),
+        # `calls` 는 **판 최댓값**이다(기획서 §7.1 의 "전투 1판 = 100~300"). 이름을
+        # `avg_calls` 로 두면 계약 비용을 뜻하는 것처럼 읽힌다(QA 재검 R19).
+        "avg_peak_mission_calls": round(sum(r.calls for r in runs) / n, 1),
         "max_calls": max(r.calls for r in runs),
+        "avg_contract_calls": round(sum(sum(m.calls for m in r.missions) for r in runs) / n, 1),
         "avg_plans": round(sum(r.plans for r in runs) / n, 1),
         "avg_deviations": round(sum(r.deviations for r in runs) / n, 1),
         "avg_adaptations": round(sum(r.adaptations for r in runs) / n, 1),
@@ -272,19 +283,31 @@ def aggregate(runs: Sequence[RunMetrics]) -> dict[str, Any]:
     }
 
 
-def paired(on: Sequence[bool], off: Sequence[bool]) -> dict[str, Any]:
+def paired(
+    on: Sequence["RunMetrics"],
+    off: Sequence["RunMetrics"],
+    criterion: "Callable[[RunMetrics], bool]",
+    axis: str,
+) -> dict[str, Any]:
     """같은 시드로 짝지은 비교 (McNemar).
 
-    성공 여부는 **계약 완주**다(`RunMetrics.contract_clear`). 마지막 판의 승패로
+    성공 기준을 **함수로 받는다.** bool 리스트를 호출자가 만들게 두었더니
+    `paired(cleared["on"], home["off"])` 처럼 두 축을 섞어도 아무도 못 잡았고,
+    결과 dict 에 축 이름이 없어 JSON 만 보고는 무엇을 짝지었는지도 알 수
+    없었다(QA 재검 2026-09-09 R19). 이제 `axis` 가 결과에 남는다.
+
+    기본 기준은 **계약 완주**다(`RunMetrics.contract_clear`). 마지막 판의 승패로
     짝을 지으면 앞판에서 누가 끌려갔는지가 결과를 지배한다(QA 2026-09-09 V1).
 
     ON/OFF 가 같은 시드를 쓰므로 짝을 살릴 수 있다. 비율만 보면 30판에서 3판
     차이가 잡음과 구별되지 않는다 — 짝지으면 같은 판 수로도 훨씬 잘 갈린다.
     p 는 이항 정확검정(양측)이고 외부 의존성 없이 계산한다.
     """
-    only_on = sum(1 for a, b in zip(on, off, strict=True) if a and not b)
-    only_off = sum(1 for a, b in zip(on, off, strict=True) if b and not a)
+    쌍 = [(criterion(a), criterion(b)) for a, b in zip(on, off, strict=True)]
+    only_on = sum(1 for a, b in 쌍 if a and not b)
+    only_off = sum(1 for a, b in 쌍 if b and not a)
     return {
+        "axis": axis,
         "games": len(on),
         "only_on_wins": only_on,
         "only_off_wins": only_off,

@@ -122,7 +122,21 @@ def test_샘플_트레이스는_계약을_지킨다():
     assert {"abandon", "replan_trigger", "boss_adapt", "flee"} <= kinds
     assert any(e.kind == "compliance" and e.payload["verdict"] == "deviate" for e in events)
     # v3 의 심장도 샘플에 있어야 프론트가 화면을 만들 수 있다.
-    assert {"cards", "casualty", "recovery", "boss_named"} <= kinds
+    assert {"cards", "casualty", "recovery", "boss_named", "horn"} <= kinds
+    # 샘플이 못 덮는 것은 **명시한다.** 부분집합만 보면 무엇이 왜 빠졌는지
+    # 아무도 모른다(QA 재검 2026-09-09 R17).
+    인터미션 = {
+        "intermission_start",
+        "directive",
+        "train_compliance",
+        "train_result",
+        "life_event",
+        "param_diff",
+        "growth_points",
+        "advice",
+    }
+    빠진 = KINDS - kinds - 인터미션
+    assert not 빠진, f"샘플이 이 종류를 한 번도 안 담는다: {sorted(빠진)}"
 
 
 def test_샘플_트레이스가_낡지_않았다():

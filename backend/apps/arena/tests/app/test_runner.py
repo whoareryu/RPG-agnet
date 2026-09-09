@@ -491,8 +491,16 @@ def test_긴_계약도_판마다_예산을_받는다():
     from apps.arena.domain.constants.balance import MAX_CALLS
     from content.missions import MISSION_JUVENILE_BOSS, MISSION_NIGHT_RAID
 
+    # **예산이 계약 길이에 비례하는가** 를 직접 잰다. 러너를 도는 것만으로는
+    # 못 잡는다 — 전에 쓰던 편성(seed=1)은 11판째 전멸해 합계 293 호출로
+    # 끝나서 옛 상한 300 에 **닿지도 못했다.** 고친 코드와 버그 코드가 바이트
+    # 단위로 같은 결과를 냈고 테스트는 초록이었다(QA 재검 2026-09-09 R11).
+    assert build_harness(missions=18)._max_calls == MAX_CALLS * 18
+    assert build_harness(missions=1)._max_calls == MAX_CALLS
+
     긴_계약 = (MISSION_NIGHT_RAID, MISSION_JUVENILE_BOSS) * 9  # 18출동
-    cfg = _config()
+    # 18판을 **완주하는** 편성이라야 옛 상한을 넘겨 폴백이 드러난다.
+    cfg = _config(seed=7, lineup=("martin", "aude", "agnes"))
     cfg = RunConfig(**{**cfg.__dict__, "missions": 긴_계약})
     rec = run(
         "long",
@@ -503,7 +511,10 @@ def test_긴_계약도_판마다_예산을_받는다():
         clock=lambda: "T",
     )
     끝 = [e for e in rec.events if e.kind == "mission_end"]
-    assert 끝, "18출동인데 한 판도 안 돌았다"
+    assert len(끝) == 18, f"18판을 완주하는 편성이라야 예산에 닿는다: {len(끝)}판"
+    assert sum(e.payload["calls_used"] for e in 끝) > MAX_CALLS, (
+        "옛 상한(런당 하나)을 넘기지 못하면 이 테스트는 버그를 되돌려도 초록이다"
+    )
     for e in 끝:
         assert e.payload["fallbacks"] == 0, (
             f"{e.payload['no']}회차에서 조용히 폴백했다: {e.payload['fallbacks']}회"
@@ -723,3 +734,34 @@ def test_뿔피리가_낀_판도_리플레이가_같은_판을_낸다(lineup, �
 
     리플레이 = _run(cfg, run_id="replay", horn=_replay_horn(원본.events))
     assert _판정(리플레이) == _판정(원본)
+
+
+def test_섭식은_기본_편성에서_걸_대상이_없으면_그렇게_기록한다():
+    """QA 재검 2026-09-09 R20 — 계승 분기가 **같은 병과가 지금 판에 있을 때만**
+    발동한다. 기본 로스터는 5명 5병과이고 출전은 3명이라 중복 병과가 구조적으로
+    불가능하다 — 80시드에서 계승 0회였다. 「무효」가 「도달 불가능한 조건에서만
+    유효」로 옮겼을 뿐이다.
+
+    지금 고치는 것은 **정직함**이다: 걸 대상이 없으면 `applied` 가 비고,
+    화면이 "아직 쓰지 못한다" 고 말한다(`boss_adapt` 의 `no_change` 와 같은 원칙).
+    """
+    from apps.arena.adapter.outbound.sinks.list_sink import ListSink
+    from apps.arena.app.use_cases.battle_setup import setup_battle
+    from apps.arena.app.use_cases.learning_cards import apply_cards
+    from apps.arena.domain.entities.trace_event import Tracer
+    from apps.arena.domain.services.judgment.cards import choose_cards
+    from content.cards import CARDS
+    from content.missions import MISSION_JUVENILE_BOSS
+
+    members = build_party(_config(lineup=("thoma", "aude", "martin")))
+    b = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True)
+    sink = ListSink()
+    apply_cards(
+        b,
+        choose_cards([], set(), (("someone", "defender", 7),), 3, CARDS),
+        Tracer("t", sink, clock=lambda: "T"),
+    )
+    섭식 = next(c for c in sink.events[-1].payload["cards"] if c["key"] == "devoured")
+    # 방패병은 이 편성에 없다 — 걸 데가 없다. 그 사실이 payload 에 남아야 한다.
+    assert 섭식["applied"] == {}, "없는 병과에 카드를 걸었다"
+    assert 섭식["round"] == 7 and 섭식["evidence"]["char_class"] == "defender"

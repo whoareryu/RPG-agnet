@@ -7,6 +7,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateRunRequest(BaseModel):
+    """출정 요청.
+
+    모르는 필드를 막는다. `{"orchestrater": false}` 오타가 200 을 받고 감독이
+    **켜진 채** 돌면, A/B 토글이 조용히 반대 팔로 도는 것이라 실험 신뢰성이
+    무너진다(§3.1). "게임은 막지 않는다" 는 전략 얘기지 오타 얘기가 아니다
+    (QA 재검 2026-09-09 R18).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     lineup: list[str] = Field(min_length=1, max_length=5)
     allocations: dict[str, dict[str, int]] = Field(default_factory=dict)
     classes: dict[str, str] = Field(default_factory=dict)

@@ -55,7 +55,10 @@ def pace_seconds(model_name: str = "fake") -> float:
 
 
 def build_harness(
-    missions: int = 1, name: str | None = None, max_calls: int | None = None
+    missions: int = 1,
+    name: str | None = None,
+    max_calls: int | None = None,
+    pace: float | None = None,
 ) -> Harness:
     """모든 경로가 하네스를 거친다 — 스키마 검증·재시도·폴백·호출 계수.
 
@@ -67,7 +70,8 @@ def build_harness(
     limit = per_mission * max(1, missions)
     name = name or model_name_from_env()
     model = build_model(name)
-    pace = pace_seconds(name)
+    # 박자는 **화면**의 것이다 — 실험 러너는 수백 판을 돌리므로 0 이어야 한다.
+    pace = pace_seconds(name) if pace is None else pace
     if pace:
         model = PacedModel(model, pace)
     return Harness(model, FakeModel(), max_calls=limit)

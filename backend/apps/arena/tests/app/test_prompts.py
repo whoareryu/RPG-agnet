@@ -1,7 +1,6 @@
 import re
 from dataclasses import replace
 
-from apps.arena.app.use_cases.agents.narration import voice
 from apps.arena.app.use_cases.agents.prompts import (
     build_boss_prompt,
     build_character_prompt,
@@ -19,6 +18,7 @@ from apps.arena.domain.services.rules.stats import allocate
 from content.classes import choose_build
 from content.environments import MINE
 from content.monsters import JUVENILE_MINOTAUR
+from content.party import voice
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
 
 MBTI = re.compile(r"\b[EI][NS][TF][JP]\b")

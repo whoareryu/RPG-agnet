@@ -1,7 +1,9 @@
 """평가 하네스는 회귀 안전망이다(기획서 §10.1). 이 테스트가 그 안전망을 지킨다."""
 
 import json
+from dataclasses import replace
 
+from apps.arena.domain.constants.balance import MAX_CALLS
 from apps.arena.domain.entities.trace_event import TraceEvent
 from eval.experiments import COMPOSITIONS, _run_once, e1, e3
 from eval.metrics import aggregate, metrics_of
@@ -28,7 +30,9 @@ def test_집계는_비율과_평균을_낸다():
     # 판 단위 네 비율은 합이 1 이다(3자리 반올림 오차만큼 벌어진다).
     assert abs(a["win_rate"] + a["retreat_rate"] + a["loss_rate"] + a["draw_rate"] - 1.0) < 0.005
     assert abs(sum(a["grade_share"].values()) - 1.0) < 0.005
-    assert a["max_calls"] <= 300, "호출 상한(기획서 §7.1)을 넘었다"
+    # 상한은 **판당** MAX_CALLS 다(기획서 §7.1). 리터럴 300 을 쓰면 단일 출처
+    # 밖이고, 계약이 길어지면 뜻까지 틀린다(QA 재검 2026-09-09 R13).
+    assert a["max_calls"] <= MAX_CALLS, "판당 호출 상한을 넘었다"
 
 
 def test_E1_은_같은_시드로_같은_결과를_낸다():
@@ -142,3 +146,22 @@ def test_집계는_판_단위_승률과_계약_단위_완주율을_따로_낸다
     assert a["clear_rate"] == 0.5, "계약 2개 중 1개만 완주했다"
     assert a["grade_share"]["full_success"] == 0.75
     assert a["grade_share"]["disaster"] == 0.25
+
+
+def test_지목_추적은_소환_가속을_지목으로_읽지_않는다():
+    """QA 재검 2026-09-09 R12 — `summon_faster` 의 `effect.after` 는 소환 주기(정수)다.
+    `field` 를 안 보면 `2` 가 truthy 라 "지목" 이 되고, 이후 보스 타격이 전부
+    안 맞는 지목으로 계수되며 **살아 있는 진짜 지목까지 지워진다.**
+    """
+    from eval.metrics import _focus_follow
+
+    events = [
+        _ev(0, 6, "boss_adapt", {"effect": {"field": "boss_focus", "after": "thoma"}}),
+        _ev(1, 6, "resolution", {"strikes": [{"target": "thoma"}, {"target": "martin"}]}),
+        # 소환 가속 — 지목이 아니다. 앞의 지목이 살아 있어야 한다.
+        _ev(2, 6, "boss_adapt", {"effect": {"field": "summon_every", "before": 3, "after": 2}}),
+        _ev(3, 6, "resolution", {"strikes": [{"target": "thoma"}]}),
+    ]
+    events = [replace(e, actor="minotaur") for e in events]
+    out = _focus_follow(events)
+    assert out == {"focus_strikes": 3, "focus_followed": 2}

@@ -1,4 +1,4 @@
-// 트레이스 이벤트 스키마 v1 — backend/core/trace/schema.py 의 미러 (설계 §8).
+// 트레이스 이벤트 스키마 v1 — backend/apps/arena/domain/entities/trace_event.py 의 미러 (설계 §8).
 // KINDS 가 파이썬 쪽과 같은지 lib/trace.test.ts 가 docs/trace-samples/one-run.jsonl 로 확인한다.
 
 export const KINDS = [

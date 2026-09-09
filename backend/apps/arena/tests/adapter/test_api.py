@@ -11,6 +11,38 @@ from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
 
 
 @pytest.fixture
+def paced_client(tmp_path):
+    """판단마다 조금 쉬는 클라이언트 — 전투 창이 열려 있는 동안 HTTP 로 끼어들 수 있다.
+
+    기본 클라이언트는 2판 계약을 0.1초에 끝내서, 뿔피리 HTTP 테스트가 **한 번도
+    200 을 못 받고** `남은 == []` 로 공허 통과했다(20회 반복 실측 0/20).
+    그래서 `blow_horn → horn_signal → 러너` 왕복을 어떤 테스트도 안 지났다
+    (QA 재검 2026-09-09 R14).
+    """
+    from apps.arena.adapter.outbound.strategies.llm.paced import PacedModel
+
+    app = build_app(
+        store=JsonlRunStore(tmp_path),
+        model_factory=lambda _n: Harness(PacedModel(FakeModel(), 0.02), FakeModel()),
+    )
+    return TestClient(app)
+
+
+def _wait_kind(client, run_id, kind, timeout=10.0):
+    """그 종류의 이벤트가 나올 때까지 기다린다. 없으면 None."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        body = client.get(f"/runs/{run_id}").json()
+        hit = next((e for e in body["events"] if e["kind"] == kind), None)
+        if hit is not None:
+            return hit
+        if body["done"]:
+            return None
+        time.sleep(0.01)
+    return None
+
+
+@pytest.fixture
 def client(tmp_path):
     app = build_app(
         store=JsonlRunStore(tmp_path), model_factory=lambda _n: Harness(FakeModel(), FakeModel())
@@ -277,26 +309,33 @@ def test_완료된_런은_상한을_먹지_않는다(tmp_path):
 # ─── 뿔피리 (기획서 v3 §8.2) ────────────────────────────────────────────
 
 
-def test_뿔피리는_불_때마다_잔여가_준다(client):
-    """계약 기간 3회. 무한이면 유저가 조종하는 게임이 된다(§0.1 위반).
+def test_HTTP_로_분_뿔피리가_실제로_판을_끝낸다(paced_client):
+    """`blow_horn → horn_signal → 러너` 왕복을 지나는 유일한 테스트.
 
-    **HTTP 로는 한 판에 한 번밖에 못 분다** — 불면 그 판이 그 자리에서 끝나기
-    때문이다(§8.2). 그래서 A단계의 2출동 계약으로는 3번째 충전에 닿지 못한다.
-    상한 분기 자체는 `test_뿔피리_세_번을_쓰면_네_번째는_거부된다` 가 세션
-    단위로 실제로 지난다(QA 2026-09-09 C5).
+    QA 재검 2026-09-09 R14: 전에는 이 자리의 테스트 둘이 **100% 공허**였다 —
+    판이 0.1초에 끝나 첫 요청이 20회 중 0회만 200 을 받았고, `남은 == []` 이면
+    `[] == []` 로 통과했다. 그래서 판 시작 창의 신호 증발(R2)이 살아남았다.
     """
+    client = paced_client
     run_id = client.post("/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 5}).json()[
         "run_id"
     ]
-    남은 = []
-    for _ in range(3):
-        r = client.post(f"/runs/{run_id}/horn")
-        if r.status_code == 200:
-            남은.append(r.json()["horn_left"])
-        else:
-            assert r.status_code == 409, r.text
-            break  # 판이 먼저 끝났거나 신호가 아직 안 닿았다
-    assert 남은 == list(range(2, 2 - len(남은), -1)), 남은
+    assert _wait_kind(client, run_id, "mission_start"), "판이 시작되지 않았다"
+
+    r = client.post(f"/runs/{run_id}/horn")
+    assert r.status_code == 200, r.text
+    assert r.json()["horn_left"] == 2, "충전이 안 닳았다"
+
+    # 이미 울린 신호가 안 닿았으면 또 받지 않는다 — 횟수만 닳고 효과는 하나다.
+    두번째 = client.post(f"/runs/{run_id}/horn")
+    assert 두번째.status_code == 409 and "이미" in 두번째.json()["detail"]
+
+    horn = _wait_kind(client, run_id, "horn")
+    assert horn is not None, "200 을 받았는데 뿔피리가 울리지 않았다"
+    assert horn["payload"]["delivered"] is True
+    _wait_done(client, run_id)
+    끝 = [e for e in client.get(f"/runs/{run_id}").json()["events"] if e["kind"] == "mission_end"]
+    assert 끝[0]["payload"]["grade"] == "withdraw", "뿔피리로 끝난 판은 「철수」다"
 
 
 def test_없는_런에_뿔피리를_불면_404(client):
@@ -316,19 +355,6 @@ def test_회수_결정을_안_받을_때_보내면_409(client):
 
 def test_없는_런에_회수_결정을_보내면_404(client):
     assert client.post("/runs/nope/recovery", json={"pay": []}).status_code == 404
-
-
-def test_이미_울린_뿔피리는_또_받지_않는다(client):
-    """세 번 누르면 횟수만 닳고 효과는 하나다 — 그건 함정이다."""
-    run_id = client.post(
-        "/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 11, "missions": 2}
-    ).json()["run_id"]
-    first = client.post(f"/runs/{run_id}/horn")
-    if first.status_code != 200:
-        return  # 판이 먼저 끝났으면 이 테스트는 재지 않는다
-    second = client.post(f"/runs/{run_id}/horn")
-    assert second.status_code == 409
-    assert "이미" in second.json()["detail"] or "전투 중이 아니다" in second.json()["detail"]
 
 
 def test_전투_중이_아니면_뿔피리를_받지_않는다(client):
@@ -430,3 +456,20 @@ def test_리플레이_런에서는_뿔피리를_받지_않는다():
     s.in_battle.set()
     s.replaying = True
     assert s.horn_refusal() == "리플레이는 다시 불 수 없다 — 녹화된 판을 그대로 되감는다"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"lineup": ["martin"], "orchestrater": False},  # 감독이 켜진 채 돈다
+        {"lineup": ["martin"], "adaption": False},
+        {"lineup": ["martin"], "mission": 2},  # 1판만 돈다
+        {"lineup": ["martin"], "allocation": {"martin": {"str_": 4}}},  # 배분이 무시된다
+    ],
+    ids=["orchestrater", "adaption", "mission", "allocation"],
+)
+def test_출정_요청의_오타는_거절된다(client, body):
+    """QA 재검 2026-09-09 R18 — 오타가 200 을 받고 **반대 팔로** 돌았다.
+    A/B 토글이 조용히 뒤집히면 실험이 재는 것이 무엇인지 알 수 없다(기획서 §3.1).
+    """
+    assert client.post("/runs", json=body).status_code == 422

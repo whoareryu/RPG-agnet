@@ -230,6 +230,7 @@ def play_mission(
 
     result = None
     늦은_신호: int | None = None  # 전령관이 없어 한 턴 묵혀 둔 신호(기획서 v3 §8.2)
+    직전_승산: float | None = None  # 유저가 보고 있던 승산 — 뿔피리 payload 에 싣는다
     while result is None:
         battle.turn += 1
         tracer.turn = battle.turn
@@ -270,6 +271,12 @@ def play_mission(
                     # 전령관이 없어 늦었으면 원래 울린 턴을 남긴다 — 그 한 턴에
                     # 무슨 일이 있었는지 인스펙터가 짚을 수 있어야 한다.
                     "delayed_from": 늦은_신호,
+                    # 유저가 **보고 있던** 승산이다 — 직전 턴에 화면에 뜬 값.
+                    # 이번 턴 값을 새로 재면 소환 전후가 갈려 판이 달라지고,
+                    # 애초에 유저는 그 값을 못 봤다. "언제 못 견뎠는가" 를 재는
+                    # 유일한 재료다(QA 재검 2026-09-09 R16).
+                    "odds_seen": 직전_승산,
+                    "threshold": plan.retreat_threshold if plan else None,
                 },
             )
             늦은_신호 = None  # 닿았다 — 판 끝의 미도착 기록이 두 번 나가면 안 된다
@@ -287,6 +294,8 @@ def play_mission(
                 "threshold": plan.retreat_threshold if plan else None,
             },
         )
+
+        직전_승산 = odds_value
 
         if plan is not None and not battle.retreat_ordered:
             triggers = replan_triggers(replan, odds_value, plan, display_names(battle))

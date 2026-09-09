@@ -15,8 +15,7 @@ from typing import Any
 
 from apps.arena.adapter.outbound.sinks.list_sink import ListSink
 from apps.arena.adapter.outbound.strategies.dice import SeededDice
-from apps.arena.adapter.outbound.strategies.harness.harness import Harness
-from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
+from apps.arena.adapter.outbound.strategies.llm.select import build_harness
 from apps.arena.app.use_cases.runner import run
 from apps.arena.domain.entities.types import Disposition, MissionSpec, RunConfig
 from content.missions import MISSIONS_A
@@ -96,7 +95,12 @@ def _run_once(
         f"eval-{seed}",
         cfg,
         members,
-        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
+        # 제품과 같은 조립 경로를 쓴다. 전에는 여기가 `Harness(...)` 직결이라
+        # "예산은 계약 길이만큼" 이 정작 그 숫자를 **재서 보고하는** 곳에서만
+        # 안 먹었다(QA 재검 2026-09-09 R13).
+        # 박자 0 — 실험은 수백 판을 돌린다. 데모 기본값(0.2초/판단)이 여기 걸리면
+        # E1 한 번이 수십 분이 된다(QA 재검 2026-09-09 R13 후속).
+        model_factory=lambda n: build_harness(missions=n, name="fake", pace=0.0),
         dice_factory=SeededDice,
         sink=sink,
         clock=lambda: "T",
@@ -114,8 +118,7 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
         cell: dict[str, Any] = {}
         # 짝비교의 성공 판정은 **계약 완주**다 — 마지막 판의 승패로 짝을 지으면
         # 앞판에서 누가 끌려갔는지가 결과를 지배한다(QA 2026-09-09 V1).
-        cleared: dict[str, list[bool]] = {}
-        home: dict[str, list[bool]] = {}
+        runs_by_side: dict[str, list[Any]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
                 _run_once(
@@ -128,8 +131,7 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 )
                 for s in range(1, seeds + 1)
             ]
-            cleared[side] = [r.contract_clear for r in runs]
-            home[side] = [r.everyone_home for r in runs]
+            runs_by_side[side] = runs
             cell[side] = aggregate(runs)
             if progress:
                 progress(
@@ -144,9 +146,13 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 **cell,
                 # ON/OFF 가 같은 시드를 쓰므로 짝지어 비교할 수 있다. 비율만 남기면
                 # 그 짝을 잃고, 30판에서 3판 차이는 잡음과 구별되지 않는다(QA 라운드 2).
-                "paired": paired(cleared["on"], cleared["off"]),
+                "paired": paired(
+                    runs_by_side["on"], runs_by_side["off"], lambda r: r.contract_clear, "완주"
+                ),
                 # 기획서 §8.1 의 주장은 승률이 아니라 회복력이다 — 데리고 나왔는가.
-                "paired_home": paired(home["on"], home["off"]),
+                "paired_home": paired(
+                    runs_by_side["on"], runs_by_side["off"], lambda r: r.everyone_home, "생환"
+                ),
             }
         )
     return {"experiment": "e1", "seeds": seeds, "model": "fake", "compositions": out}
@@ -159,8 +165,7 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
         cell: dict[str, Any] = {}
         # 짝비교의 성공 판정은 **계약 완주**다 — 마지막 판의 승패로 짝을 지으면
         # 앞판에서 누가 끌려갔는지가 결과를 지배한다(QA 2026-09-09 V1).
-        cleared: dict[str, list[bool]] = {}
-        home: dict[str, list[bool]] = {}
+        runs_by_side: dict[str, list[Any]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
                 _run_once(
@@ -173,8 +178,7 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 )
                 for s in range(1, seeds + 1)
             ]
-            cleared[side] = [r.contract_clear for r in runs]
-            home[side] = [r.everyone_home for r in runs]
+            runs_by_side[side] = runs
             cell[side] = aggregate(runs)
             if progress:
                 progress(
@@ -188,9 +192,13 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 "key": comp.key,
                 "label": comp.label,
                 **cell,
-                "paired": paired(cleared["on"], cleared["off"]),
+                "paired": paired(
+                    runs_by_side["on"], runs_by_side["off"], lambda r: r.contract_clear, "완주"
+                ),
                 # 기획서 §8.1 의 주장은 승률이 아니라 회복력이다 — 데리고 나왔는가.
-                "paired_home": paired(home["on"], home["off"]),
+                "paired_home": paired(
+                    runs_by_side["on"], runs_by_side["off"], lambda r: r.everyone_home, "생환"
+                ),
             }
         )
     return {"experiment": "e2", "seeds": seeds, "model": "fake", "compositions": out}

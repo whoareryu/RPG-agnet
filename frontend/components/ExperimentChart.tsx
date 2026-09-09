@@ -19,7 +19,8 @@ export type Cell = {
   survival_rate: number;
   abandon_rate: number;
   avg_turns: number;
-  avg_calls: number;
+  avg_peak_mission_calls: number;
+  avg_contract_calls: number;
   max_calls: number;
   avg_plans: number;
   avg_deviations: number;
@@ -32,6 +33,7 @@ export type Cell = {
 };
 
 export type Paired = {
+  axis: string;
   games: number;
   only_on_wins: number;
   only_off_wins: number;

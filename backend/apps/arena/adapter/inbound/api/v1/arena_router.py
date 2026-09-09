@@ -11,7 +11,7 @@ import queue
 import secrets
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -36,11 +36,17 @@ from apps.arena.app.use_cases.intermission import (
     IntermissionState,
     run_intermission,
 )
-from apps.arena.app.use_cases.runner import RunRecord, run
-from apps.arena.domain.constants.balance import FREE_POINTS, HORN_CHARGES, MAX_CALLS, STAT_BASE
+from apps.arena.app.use_cases.runner import ModelFactory, RunRecord, run
+from apps.arena.domain.constants.balance import (
+    FREE_POINTS,
+    HORN_CHARGES,
+    MAX_CALLS,
+    STAT_BASE,
+    STAT_MAX,
+)
 from apps.arena.domain.entities.trace_event import TraceEvent, Tracer
 from apps.arena.domain.entities.types import RunConfig
-from apps.arena.domain.ports.ports import DecisionModel, RunStore
+from apps.arena.domain.ports.ports import RunStore
 from apps.arena.domain.services.rules.disposition import describe, mbti_label
 from content.cards import CARDS
 from content.classes import CLASSES, choose_build
@@ -156,7 +162,7 @@ SESSION_TTL = 120.0
 
 def build_app(
     store: RunStore,
-    model_factory: Callable[[], DecisionModel],
+    model_factory: ModelFactory,
     model_name: str = "fake",
     experiments_dir: Path | None = None,
     directive_timeout: float = DIRECTIVE_TIMEOUT,
@@ -221,6 +227,8 @@ def build_app(
             ],
             "free_points": FREE_POINTS,
             "stat_base": STAT_BASE,
+            # 상한도 서버가 준다 — 화면이 20 을 하드코딩하고 있었다(수치 단일 출처).
+            "stat_max": STAT_MAX,
             "lineup_size": MISSIONS_A[0].lineup_max,
             "horn_charges": HORN_CHARGES,
             # 화면이 미션 이름을 하드코딩하면 콘텐츠가 바뀔 때 조용히 거짓말한다
@@ -442,7 +450,7 @@ def build_app(
     def _start(
         session: RunSession,
         members: Any,
-        factory: Callable[[], DecisionModel],
+        factory: ModelFactory,
         horn: Any = None,
         recovery_fn: Any = None,
     ) -> None:

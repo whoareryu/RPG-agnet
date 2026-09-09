@@ -16,12 +16,13 @@ type Props = {
   base: Record<string, number>;
   alloc: Allocation;
   statBase: number;
+  statMax: number;
   freePoints: number;
   recommended: Record<string, number>;
   onChange: (a: Allocation) => void;
 };
 
-export default function PointAllocator({ base, alloc, statBase, freePoints, recommended, onChange }: Props) {
+export default function PointAllocator({ base, alloc, statBase, statMax, freePoints, recommended, onChange }: Props) {
   const left = remaining(alloc, freePoints);
   return (
     <div className="stack" style={{ gap: 6 }}>
@@ -49,10 +50,10 @@ export default function PointAllocator({ base, alloc, statBase, freePoints, reco
                 {v}
               </span>
               <span className="row" style={{ gap: 2 }}>
-                <button className="btn btn-sm" style={{ padding: "0 7px" }} onClick={() => onChange(bump(alloc, k, -1, statBase, freePoints))}>
+                <button className="btn btn-sm" style={{ padding: "0 7px" }} onClick={() => onChange(bump(alloc, k, -1, statBase, freePoints, statMax))}>
                   −
                 </button>
-                <button className="btn btn-sm" style={{ padding: "0 7px" }} onClick={() => onChange(bump(alloc, k, 1, statBase, freePoints))}>
+                <button className="btn btn-sm" style={{ padding: "0 7px" }} onClick={() => onChange(bump(alloc, k, 1, statBase, freePoints, statMax))}>
                   +
                 </button>
               </span>

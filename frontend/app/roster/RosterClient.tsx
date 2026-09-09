@@ -27,6 +27,7 @@ export type PresetResponse = {
   classes: { key: string; label: string; primary: string[] }[];
   free_points: number;
   stat_base: number;
+  stat_max: number;
   lineup_size: number;
   horn_charges: number;
   // 미션 이름을 화면이 하드코딩하지 않는다 — 콘텐츠가 바뀌면 화면도 같이 바뀐다.
@@ -60,7 +61,7 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
   const problems = useMemo(() => {
     const out: string[] = [];
     for (const c of preset.roster) {
-      const p = validate(allocs[c.id], preset.stat_base, preset.free_points);
+      const p = validate(allocs[c.id], preset.stat_base, preset.free_points, preset.stat_max);
       if (p) out.push(`${c.name}: ${p}`);
     }
     if (lineup.length === 0) out.push("적어도 한 명은 내보내야 한다");
@@ -129,6 +130,7 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
             c={c}
             classes={preset.classes}
             statBase={preset.stat_base}
+            statMax={preset.stat_max}
             freePoints={preset.free_points}
             alloc={allocs[c.id]}
             onAlloc={(a) => setAllocs((cur) => ({ ...cur, [c.id]: a }))}

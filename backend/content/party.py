@@ -2,11 +2,23 @@
 
 from dataclasses import replace
 
-from apps.arena.app.use_cases.agents.narration import voice
 from apps.arena.domain.entities.types import Character, PartyMember, RunConfig
 from apps.arena.domain.services.rules.stats import allocate
 from content.classes import CLASSES, choose_build
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
+
+
+def voice(c: Character) -> str:
+    """캐릭터 프롬프트의 말투 지시 한 줄.
+
+    전에는 `app/use_cases/agents/narration.py` 에 있었고, 성별로 갈리는 척하는
+    **죽은 분기**(두 갈래가 같은 문자열)를 품고 있었다. 그 분기 하나 때문에
+    narration 이 성별 허용 목록에 들어가 있었고, 이 파일이 그걸 쓰느라
+    **content → app** 화살표가 생겼다(QA 재검 2026-09-09 R15).
+
+    말투는 세계관 텍스트다 — 콘텐츠가 소유한다.
+    """
+    return f"{c.name}. 짧고 담백하게 말한다. 자신을 '나'로 부른다."
 
 
 def apply_direction(config: RunConfig, cid: str) -> Character:

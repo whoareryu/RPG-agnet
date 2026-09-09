@@ -89,6 +89,17 @@ def test_app_은_adapter_를_import_하지_않는다(py):
     _금지_접두사(py, ("apps.arena.adapter", "content", "eval", "tests"))
 
 
+@pytest.mark.parametrize("py", _파일들(Path("content")), ids=str)
+def test_content_는_유스케이스를_import_하지_않는다(py):
+    """세계관 데이터가 유스케이스에 묶이면 밸런스 튠이 코드 수정이 된다(설계 §3.3).
+
+    이 규칙이 **없어서** `content/party.py` 가 `app/use_cases/agents/narration`
+    을 import 하는 것을 CI 가 통과시켰다(QA 재검 2026-09-09 R15).
+    CLAUDE.md 의 의존 그림에는 그 화살표가 없다.
+    """
+    _금지_접두사(py, ("apps.arena.app", "apps.arena.adapter", "eval", "tests"))
+
+
 @pytest.mark.parametrize("py", _파일들(DOMAIN) + _파일들(APP), ids=str)
 def test_안쪽_계층은_인프라_프레임워크를_import_하지_않는다(py):
     for name in _import_모듈들(py):

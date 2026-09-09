@@ -11,6 +11,7 @@ type Props = {
   c: PresetCharacter;
   classes: { key: string; label: string; primary: string[] }[];
   statBase: number;
+  statMax: number;
   freePoints: number;
   alloc: Allocation;
   onAlloc: (a: Allocation) => void;
@@ -67,7 +68,7 @@ export default function RosterCard(p: Props) {
         </label>
       </div>
 
-      <PointAllocator base={c.base_stats} alloc={p.alloc} statBase={p.statBase} freePoints={p.freePoints} recommended={c.recommended} onChange={p.onAlloc} />
+      <PointAllocator base={c.base_stats} alloc={p.alloc} statBase={p.statBase} statMax={p.statMax} freePoints={p.freePoints} recommended={c.recommended} onChange={p.onAlloc} />
 
       <div className="stack" style={{ gap: 4 }}>
         <div className="card-kicker">성향 (타고남 · 변경 불가)</div>

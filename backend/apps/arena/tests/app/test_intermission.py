@@ -5,7 +5,6 @@ import pytest
 from apps.arena.adapter.outbound.sinks.list_sink import ListSink
 from apps.arena.adapter.outbound.strategies.dice import FixedDice, SeededDice
 from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
-from apps.arena.app.use_cases.agents.narration import voice
 from apps.arena.app.use_cases.intermission import (
     IntermissionInput,
     IntermissionState,
@@ -24,6 +23,7 @@ from apps.arena.domain.services.judgment.training import (
 from apps.arena.domain.services.rules.stats import allocate
 from content.classes import choose_build
 from content.events import LIFE_EVENTS, eligible, pool_for
+from content.party import voice
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID
 
 

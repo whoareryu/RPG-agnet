@@ -13,14 +13,6 @@ def pronoun(c: Character) -> str:
     return "그녀" if c.gender == "female" else "그"
 
 
-def voice(c: Character) -> str:
-    """캐릭터 프롬프트의 말투 지시 한 줄."""
-    base = "짧고 담백하게 말한다."
-    if c.gender == "female":
-        return f"{c.name}. {base} 자신을 '나'로 부른다."
-    return f"{c.name}. {base} 자신을 '나'로 부른다."
-
-
 def life_event_subject(c: Character) -> str:
     """생애 이벤트 서사에서 쓰는 주어. 사유 목록이 성별별로 달라질 수 있는 자리(§6.2)."""
     return f"{c.name}({pronoun(c)})"

@@ -66,6 +66,12 @@ def main() -> None:
         # 회수 결정도 샘플에 넣는다 — 아무도 안 되찾는 쪽이 v3 의 기본값이고,
         # 그래야 recovery·boss_named·「섭식」 카드가 한 파일에 다 들어온다.
         recovery=lambda ids, costs, tracer: set(),
+        # 뿔피리도 샘플에 넣는다. 없으면 프론트의 뿔피리 서사·인스펙터 분기가
+        # 계약 검사를 한 줄도 안 받는다(QA 재검 2026-09-09 R17).
+        # 7회차(야습) 12턴 — 전령관이 있어 즉시 닿는다. 그 앞에서 이미 쓰러진
+        # 사람이 있어 casualty·recovery·boss_named 가 남고, 보스전은 끝까지
+        # 굴러 abandon·flee·boss_adapt 도 남는다.
+        horn=lambda mission, turn: mission == MISSIONS_A[0].no and turn == 12,
     )
     if args.stdout:
         # 판정 뷰만 낸다 — ts 와 timing 은 매번 다르고 판단이 아니다(설계 §3.4).

@@ -40,23 +40,28 @@ def main() -> int:
 def _print_table(result: dict[str, Any]) -> None:
     if result["experiment"] in ("e1", "e2"):
         flag = "감독" if result["experiment"] == "e1" else "적응"
-        head = f"{'조합':<12} {flag:<5} {'승률':>5} {'후퇴':>5} {'패배':>5} "
-        print(head + f"{'생존':>5} {'평균턴':>6} {'최대호출':>7}")
-        print("-" * 62)
+        head = f"{'조합':<12} {flag:<5} {'완주':>5} {'생환':>5} {'승률':>5} {'패배':>5} "
+        print(head + f"{'생존':>5} {'끌려감':>6} {'평균턴':>6} {'최대호출':>7}")
+        print("-" * 74)
         for c in result["compositions"]:
             for side in ("on", "off"):
                 a = c[side]
                 print(
-                    f"{c['label']:<12} {side.upper():<5} {a['win_rate']:>5.0%} "
-                    f"{a['retreat_rate']:>5.0%} {a['loss_rate']:>5.0%} "
-                    f"{a['survival_rate']:>5.0%} {a['avg_turns']:>6.1f} {a['max_calls']:>7}"
+                    f"{c['label']:<12} {side.upper():<5} {a['clear_rate']:>5.0%} "
+                    f"{a['home_rate']:>5.0%} {a['win_rate']:>5.0%} {a['loss_rate']:>5.0%} "
+                    f"{a['survival_rate']:>5.0%} {a['avg_taken']:>6.2f} "
+                    f"{a['avg_turns']:>6.1f} {a['max_calls']:>7}"
                 )
-            pr = c.get("paired") or {}
-            if pr:
+            # 두 축을 함께 찍는다. 완주만 보면 감독이 전원을 데리고 나온 판이
+            # 벌점이 되어 §8.1 의 "회복력" 주장을 스스로 반증한다.
+            for label, key in (("완주", "paired"), ("생환", "paired_home")):
+                pr = c.get(key) or {}
+                if not pr:
+                    continue
                 mark = "유의" if pr["p_value"] < 0.05 else "잡음과 구별 안 됨"
                 print(
-                    f"{'':<12} {'짝비교':<5} ON만 이김 {pr['only_on_wins']:>3} · "
-                    f"OFF만 이김 {pr['only_off_wins']:>3} · p={pr['p_value']:.4f} ({mark})"
+                    f"{'':<12} {'짝비교':<5} {label}: ON만 {pr['only_on_wins']:>3} · "
+                    f"OFF만 {pr['only_off_wins']:>3} · p={pr['p_value']:.4f} ({mark})"
                 )
     else:
         for axis in result["axes"]:

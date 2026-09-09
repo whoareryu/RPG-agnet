@@ -3,6 +3,15 @@
 
 export type Cell = {
   games: number;
+  // 판 단위(missions 개) 비율과 계약 단위(games 개) 비율이 따로 온다 —
+  // 마지막 판만 세면 앞판의 참사가 사라진다(QA 2026-09-09 V1).
+  missions: number;
+  clear_rate: number;
+  home_rate: number;
+  grade_share: Record<string, number>;
+  avg_injured: number;
+  avg_taken: number;
+  avg_dead: number;
   win_rate: number;
   retreat_rate: number;
   loss_rate: number;
@@ -18,11 +27,26 @@ export type Cell = {
   action_share: Record<string, number>;
 };
 
+export type Paired = {
+  games: number;
+  only_on_wins: number;
+  only_off_wins: number;
+  p_value: number;
+};
+
 export type AbResult = {
   experiment: "e1" | "e2";
   seeds: number;
   model: string;
-  compositions: { key: string; label: string; lineup?: string[]; on: Cell; off: Cell }[];
+  compositions: {
+    key: string;
+    label: string;
+    lineup?: string[];
+    on: Cell;
+    off: Cell;
+    paired?: Paired;
+    paired_home?: Paired;
+  }[];
 };
 
 export type E3Result = {
@@ -86,17 +110,27 @@ export default function AbChart({ data, flag }: { data: AbResult; flag: string }
         <span>
           조합당 시드 {data.seeds}개 · 모델 {data.model}
         </span>
-        <Legend extra="막대 오른쪽은 생존율" />
+        <Legend extra="막대는 판 단위 결과 · 「완주」는 계약을 끝까지 이룬 비율" />
       </div>
       {data.compositions.map((c) => {
-        const delta = c.on.win_rate - c.off.win_rate;
+        // 두 축을 함께 보여준다. 완주만 보면 감독이 목표를 포기하고 전원을
+        // 데리고 나온 판이 벌점이 되어, 기획서 §8.1 의 "회복력" 주장을 스스로
+        // 반증한다 — 「철수」는 벌점이 아니다(v3 §7.1b).
+        const delta = c.on.clear_rate - c.off.clear_rate;
+        const homeDelta = c.on.home_rate - c.off.home_rate;
         return (
           <div key={c.key} className="stack" style={{ gap: 4 }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <b>{c.label}</b>
-              <span className={`tag ${delta > 0 ? "tag-ok" : delta < 0 ? "tag-accent" : ""}`}>
-                {flag} 켜면 승률 {delta > 0 ? "+" : ""}
-                {Math.round(delta * 100)}p
+              <span className="row" style={{ gap: 6 }}>
+                <span className={`tag ${delta > 0 ? "tag-ok" : delta < 0 ? "tag-accent" : ""}`}>
+                  {flag} 켜면 완주 {delta > 0 ? "+" : ""}
+                  {Math.round(delta * 100)}p
+                </span>
+                <span className={`tag ${homeDelta > 0 ? "tag-ok" : homeDelta < 0 ? "tag-accent" : ""}`}>
+                  생환 {homeDelta > 0 ? "+" : ""}
+                  {Math.round(homeDelta * 100)}p
+                </span>
               </span>
             </div>
             {(["on", "off"] as const).map((side) => (
@@ -106,11 +140,24 @@ export default function AbChart({ data, flag }: { data: AbResult; flag: string }
                 </span>
                 <Bar cell={c[side]} />
                 <span className="mono faint">
-                  승 {Math.round(c[side].win_rate * 100)}% · 생존 {Math.round(c[side].survival_rate * 100)}% ·{" "}
-                  {c[side].avg_turns}턴
+                  완주 {Math.round(c[side].clear_rate * 100)}% · 생환 {Math.round(c[side].home_rate * 100)}% · 판 승{" "}
+                  {Math.round(c[side].win_rate * 100)}% · 끌려감 {c[side].avg_taken} · {c[side].avg_turns}턴
                 </span>
               </div>
             ))}
+            {(
+              [
+                ["완주", c.paired],
+                ["생환", c.paired_home],
+              ] as const
+            ).map(([label, pr]) =>
+              pr ? (
+                <div key={label} className="small faint mono">
+                  {label} 짝비교 · ON만 {pr.only_on_wins} / OFF만 {pr.only_off_wins} · p={pr.p_value.toFixed(4)}{" "}
+                  {pr.p_value < 0.05 ? "(유의)" : "(잡음과 구별 안 됨)"}
+                </div>
+              ) : null,
+            )}
           </div>
         );
       })}

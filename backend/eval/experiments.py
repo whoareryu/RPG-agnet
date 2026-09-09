@@ -111,7 +111,10 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
     out = []
     for comp in COMPOSITIONS:
         cell: dict[str, Any] = {}
-        outcomes: dict[str, list[str]] = {}
+        # 짝비교의 성공 판정은 **계약 완주**다 — 마지막 판의 승패로 짝을 지으면
+        # 앞판에서 누가 끌려갔는지가 결과를 지배한다(QA 2026-09-09 V1).
+        cleared: dict[str, list[bool]] = {}
+        home: dict[str, list[bool]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
                 _run_once(
@@ -124,10 +127,14 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 )
                 for s in range(1, seeds + 1)
             ]
-            outcomes[side] = [r.outcome for r in runs]
+            cleared[side] = [r.contract_clear for r in runs]
+            home[side] = [r.everyone_home for r in runs]
             cell[side] = aggregate(runs)
             if progress:
-                progress(f"E1 {comp.label} 감독 {side.upper()}: 승률 {cell[side]['win_rate']:.0%}")
+                progress(
+                    f"E1 {comp.label} 감독 {side.upper()}: "
+                    f"완주 {cell[side]['clear_rate']:.0%} · 판 승률 {cell[side]['win_rate']:.0%}"
+                )
         out.append(
             {
                 "key": comp.key,
@@ -136,7 +143,9 @@ def e1(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 **cell,
                 # ON/OFF 가 같은 시드를 쓰므로 짝지어 비교할 수 있다. 비율만 남기면
                 # 그 짝을 잃고, 30판에서 3판 차이는 잡음과 구별되지 않는다(QA 라운드 2).
-                "paired": paired(outcomes["on"], outcomes["off"]),
+                "paired": paired(cleared["on"], cleared["off"]),
+                # 기획서 §8.1 의 주장은 승률이 아니라 회복력이다 — 데리고 나왔는가.
+                "paired_home": paired(home["on"], home["off"]),
             }
         )
     return {"experiment": "e1", "seeds": seeds, "model": "fake", "compositions": out}
@@ -147,7 +156,10 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
     out = []
     for comp in COMPOSITIONS:
         cell: dict[str, Any] = {}
-        outcomes: dict[str, list[str]] = {}
+        # 짝비교의 성공 판정은 **계약 완주**다 — 마지막 판의 승패로 짝을 지으면
+        # 앞판에서 누가 끌려갔는지가 결과를 지배한다(QA 2026-09-09 V1).
+        cleared: dict[str, list[bool]] = {}
+        home: dict[str, list[bool]] = {}
         for side, on in (("on", True), ("off", False)):
             runs = [
                 _run_once(
@@ -160,16 +172,22 @@ def e2(seeds: int, progress: Progress | None = None) -> dict[str, Any]:
                 )
                 for s in range(1, seeds + 1)
             ]
-            outcomes[side] = [r.outcome for r in runs]
+            cleared[side] = [r.contract_clear for r in runs]
+            home[side] = [r.everyone_home for r in runs]
             cell[side] = aggregate(runs)
             if progress:
-                progress(f"E2 {comp.label} 적응 {side.upper()}: 승률 {cell[side]['win_rate']:.0%}")
+                progress(
+                    f"E2 {comp.label} 적응 {side.upper()}: "
+                    f"완주 {cell[side]['clear_rate']:.0%} · 판 승률 {cell[side]['win_rate']:.0%}"
+                )
         out.append(
             {
                 "key": comp.key,
                 "label": comp.label,
                 **cell,
-                "paired": paired(outcomes["on"], outcomes["off"]),
+                "paired": paired(cleared["on"], cleared["off"]),
+                # 기획서 §8.1 의 주장은 승률이 아니라 회복력이다 — 데리고 나왔는가.
+                "paired_home": paired(home["on"], home["off"]),
             }
         )
     return {"experiment": "e2", "seeds": seeds, "model": "fake", "compositions": out}

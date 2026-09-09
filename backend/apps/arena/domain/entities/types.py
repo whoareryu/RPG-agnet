@@ -173,6 +173,23 @@ class SkillDef:
 
 
 @dataclass(frozen=True)
+class CardDef:
+    """학습 카드 (기획서 v3 §8.4). 그것은 당신이 남긴 것을 먹고 자란다.
+
+    실효는 기존 메커니즘으로만 낸다 — 새 효과를 만들지 않는다.
+      focus        : 지목한 대원을 우선 타격한다(battle.boss_focus)
+      ranged_block : 원거리 대원의 명중을 깎는다(blind 상태)
+    """
+
+    key: str
+    name: str
+    source: Literal["scout", "flight", "loot", "feeding"]
+    observation: str  # 무엇을 보고 배웠는가. {값} 자리는 선택 시점에 채운다
+    effect: Literal["focus", "ranged_block"]
+    magnitude: int = 0
+
+
+@dataclass(frozen=True)
 class BuildChoice:
     """AI 세부 층의 결과(기획서 §5 "세부" 층). 무기·갑옷·스킬은 유저가 정하지 않는다."""
 

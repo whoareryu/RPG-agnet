@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import CardsPanel from "@/components/CardsPanel";
 import Dashboard from "@/components/Dashboard";
 import HornButton from "@/components/HornButton";
 import RecoveryPanel from "@/components/RecoveryPanel";
@@ -90,6 +91,9 @@ export default function BattleClient({ runId }: { runId: string }) {
   );
   const askRecovery = taken.length > 0 && !recoverySent && status !== "error";
 
+  // 보스전 시작에 펼쳐진 학습 카드(기획서 v3 §8.4). 마지막 것이 지금 판의 것이다.
+  const cards = useMemo(() => events.findLast((e) => e.kind === "cards") ?? null, [events]);
+
   return (
     <main className="page stack" style={{ gap: 14 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -139,6 +143,8 @@ export default function BattleClient({ runId }: { runId: string }) {
           대원들은 그것을 <strong>「{bossName}」</strong>이라 부른다.
         </p>
       )}
+
+      {cards && <CardsPanel event={cards} names={names} />}
 
       {askRecovery && (
         <RecoveryPanel

@@ -11,6 +11,7 @@ export const KINDS = [
   "compliance",
   "decision",
   "resolution",
+  "cards",
   "boss_adapt",
   "replan_trigger",
   "abandon",

@@ -152,6 +152,11 @@ export function narrate(e: TraceEvent, names: Names): string {
       return p.paid
         ? `${withJosa(who, "를")} 되찾기로 한다. 은화 ${p.cost}.`
         : `${withJosa(who, "를")} 굴에 둔다. 되찾는 값은 은화 ${p.cost}였다.`;
+    case "cards": {
+      // 기획서 v3 §8.4 — 그것은 당신이 남긴 것을 먹고 자란다.
+      const cs = (p.cards as { name: string }[]) ?? [];
+      return `그것이 배운 것이 펼쳐진다 — ${cs.map((c) => `「${c.name}」`).join(" ")}.`;
+    }
     case "boss_named":
       // 기획서 v3 §8.5 — 그것에게는 이름이 없다. 첫 끌려감이 붙인다.
       return `대원들은 그것을 「${p.after}」이라 부르기 시작했다.`;

@@ -42,6 +42,7 @@ from apps.arena.domain.entities.trace_event import TraceEvent
 from apps.arena.domain.entities.types import RunConfig
 from apps.arena.domain.ports.ports import DecisionModel, RunStore
 from apps.arena.domain.services.rules.disposition import describe, mbti_label
+from content.cards import CARDS
 from content.classes import CLASSES, choose_build
 from content.events import pool_for
 from content.missions import MISSIONS_A, MISSIONS_SINGLE
@@ -373,6 +374,7 @@ def build_app(
                     intermission=intermission,
                     horn=session.horn_signal,
                     recovery=_recovery_for(session),
+                    card_pool=CARDS,
                 )
                 try:
                     store.save(record)

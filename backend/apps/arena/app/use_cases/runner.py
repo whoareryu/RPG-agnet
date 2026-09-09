@@ -14,6 +14,7 @@ from typing import Any
 from apps.arena.app.use_cases.agents.boss import boss_act, minion_act
 from apps.arena.app.use_cases.agents.character import character_act
 from apps.arena.app.use_cases.agents.orchestrator import make_plan
+from apps.arena.domain.constants.balance import CARD_SLOTS
 from apps.arena.domain.entities.trace_event import TraceEvent, Tracer
 from apps.arena.domain.entities.types import (
     Action,
@@ -27,13 +28,16 @@ from apps.arena.domain.ports.ports import DecisionModel, Dice, TraceSink
 from apps.arena.domain.services.battle.order import turn_order
 from apps.arena.domain.services.battle.resolve import end_turn, resolve
 from apps.arena.domain.services.battle.state import (
+    ActionRecord,
     Battle,
+    Status,
     display_names,
     living,
     outcome,
     unit_from_character,
     unit_from_enemy,
 )
+from apps.arena.domain.services.judgment.cards import choose_cards
 from apps.arena.domain.services.judgment.odds import odds
 from apps.arena.domain.services.judgment.replan import (
     ReplanState,
@@ -158,6 +162,59 @@ def _maybe_summon(battle: Battle, tracer: Tracer) -> None:
     )
 
 
+def _cards_for(
+    mission: MissionSpec,
+    record: "RunRecord",
+    history: list[ActionRecord],
+    pool: tuple[Any, ...],
+) -> list[tuple[Any, dict[str, Any]]]:
+    """보스전 앞에서만 카드를 뽑는다. 일반전은 카드를 안 쓴다.
+
+    슬롯은 형태가 자랄수록 는다 — 3형태는 진화 트리가 아니라 유저의 실패
+    기록이다(기획서 v3 §8.4).
+    """
+    slots = CARD_SLOTS.get(mission.casualty_tier, 0)
+    if not slots or not pool:
+        return []
+    return choose_cards(history, set(), record.forsaken, slots, pool)
+
+
+def _apply_cards(battle: Battle, cards: list[tuple[Any, dict[str, Any]]], tracer: Tracer) -> None:
+    """보스전 시작에 카드가 펼쳐진다(기획서 v3 §8.4).
+
+    실효는 기존 메커니즘으로만 낸다 — focus 는 이미 있는 boss_focus 를 쓰고,
+    ranged_block 은 blind 상태를 건다. 새 효과를 만들지 않는다.
+    """
+    펼친_것 = []
+    for card, why in cards:
+        applied: dict[str, Any] = {}
+        if card.effect == "focus":
+            대상 = why.get("member")
+            if 대상 in battle.units:
+                battle.boss_focus = 대상
+                applied = {"field": "boss_focus", "after": 대상}
+        elif card.effect == "ranged_block":
+            맞은_사람 = [
+                u.id for u in battle.units.values() if u.faction == battle.party and u.weapon.ranged
+            ]
+            for uid in 맞은_사람:
+                battle.units[uid].statuses.append(
+                    Status("blind", battle.turn_limit, card.magnitude)
+                )
+            applied = {"field": "blind", "value": card.magnitude, "units": 맞은_사람}
+        펼친_것.append(
+            {
+                "key": card.key,
+                "name": card.name,
+                "source": card.source,
+                "observation": card.observation.format(**why),
+                "evidence": why,
+                "applied": applied,
+            }
+        )
+    tracer.emit("cards", {"cards": 펼친_것})
+
+
 def _order_retreat(battle: Battle, plan: Plan, odds_value: float, tracer: Tracer) -> None:
     """감독의 포기 — 진영 전체 후퇴(설계 §5.3). 유닛별 FLEE 는 턴 루프가 굴린다."""
     battle.retreat_ordered = True
@@ -193,6 +250,8 @@ def play_mission(
     seed: int,
     horn: HornFn | None = None,
     boss_title: str | None = None,
+    cards: list[tuple[Any, dict[str, Any]]] | None = None,
+    res_history: list[ActionRecord] | None = None,
 ) -> MissionResult:
     battle = setup_battle(mission, members, seed, adaptation_on, boss_title)
     tracer.mission = mission.no
@@ -229,6 +288,11 @@ def play_mission(
             "adaptation_on": battle.adaptation_on,
         },
     )
+
+    # 판이 열리고 나서 카드가 펼쳐진다(기획서 v3 §8.4). 그 전에 찍으면
+    # tracer 가 아직 이전 판을 가리켜 이벤트가 엉뚱한 회차를 달고 나간다.
+    if cards:
+        _apply_cards(battle, cards, tracer)
 
     plan: Plan | None = None
     plans = 0
@@ -354,6 +418,9 @@ def play_mission(
         abandoned=abandoned,
     )
     tracer.emit("mission_end", res)
+    # 다음 보스전이 이 기록을 읽어 카드를 뽑는다(기획서 v3 §8.4).
+    if res_history is not None:
+        res_history.extend(battle.history)
     return res
 
 
@@ -377,6 +444,7 @@ def run(
     clock: Callable[[], str] | None = None,
     horn: HornFn | None = None,
     recovery: RecoveryFn | None = None,
+    card_pool: tuple[Any, ...] = (),
 ) -> RunRecord:
     collect = _Collect(sink)
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
@@ -385,6 +453,7 @@ def run(
     record = RunRecord(run_id=run_id, config=_config_payload(config, members))
 
     tracer.emit("run_start", record.config)
+    지난_기록: list[ActionRecord] = []
     for i, mission in enumerate(config.missions):
         res = play_mission(
             mission,
@@ -397,6 +466,8 @@ def run(
             seed=config.seed,
             horn=horn,
             boss_title=record.boss_title,
+            cards=_cards_for(mission, record, 지난_기록, card_pool),
+            res_history=지난_기록,
         )
         record.results.append(res)
 

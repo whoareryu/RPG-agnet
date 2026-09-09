@@ -24,6 +24,7 @@ KINDS: frozenset[str] = frozenset(
         "compliance",
         "decision",
         "resolution",
+        "cards",
         "boss_adapt",
         "replan_trigger",
         "abandon",

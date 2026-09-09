@@ -16,6 +16,7 @@ sys.path.insert(0, str(BACKEND))
 
 from apps.arena.adapter.outbound.strategies.harness.harness import Harness  # noqa: E402
 from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel  # noqa: E402
+from content.cards import CARDS  # noqa: E402
 from content.missions import MISSIONS_A  # noqa: E402
 from content.party import build_party  # noqa: E402
 from apps.arena.adapter.outbound.strategies.dice import SeededDice  # noqa: E402
@@ -60,6 +61,7 @@ def main() -> None:
         model_factory=lambda: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         clock=lambda: "2026-09-07T00:00:00.000+00:00",
+        card_pool=CARDS,
     )
     if args.stdout:
         # 판정 뷰만 낸다 — ts 와 timing 은 매번 다르고 판단이 아니다(설계 §3.4).

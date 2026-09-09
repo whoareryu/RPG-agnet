@@ -369,3 +369,54 @@ def test_회수_결정이_비용과_함께_트레이스에_남는다():
     assert ev, "회수 결정이 트레이스에 없다"
     p = ev[0].payload
     assert p["member"] and p["paid"] is False and isinstance(p["cost"], int)
+
+
+# ─── 학습 카드 (기획서 v3 §8.4) ─────────────────────────────────────────
+
+
+def _card_run(seed=3, **over):
+    from content.cards import CARDS
+
+    return run(
+        "r",
+        _config(seed=seed, **over),
+        build_party(_config(seed=seed, **over)),
+        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        dice_factory=SeededDice,
+        clock=lambda: "T",
+        card_pool=CARDS,
+    )
+
+
+def test_보스전에서만_카드가_펼쳐진다():
+    """일반전은 카드를 안 쓴다. 슬롯이 보스 형태에만 있다."""
+    rec = _card_run()
+    카드들 = [e for e in rec.events if e.kind == "cards"]
+    assert len(카드들) == 1, "카드가 보스전 말고 다른 데서도 펼쳐졌다"
+    보스_시작 = [e for e in rec.events if e.kind == "mission_start"][1]
+    assert 카드들[0].seq > 보스_시작.seq
+
+
+def test_카드는_출처와_관측을_들고_온다():
+    """인스펙터가 출처를 가리킬 수 있어야 한다 — 그러지 않으면 그냥 표시다."""
+    rec = _card_run()
+    cards = [e for e in rec.events if e.kind == "cards"][0].payload["cards"]
+    assert cards, "보스전인데 카드가 하나도 없다"
+    for c in cards:
+        assert c["source"] in ("scout", "flight", "loot", "feeding")
+        assert c["observation"] and "{" not in c["observation"], c
+        assert c["applied"], f"카드가 아무것도 안 했다: {c}"
+
+
+def test_카드는_슬롯을_넘지_않는다():
+    from apps.arena.domain.constants.balance import CARD_SLOTS
+
+    rec = _card_run()
+    cards = [e for e in rec.events if e.kind == "cards"][0].payload["cards"]
+    assert len(cards) <= CARD_SLOTS["boss_juvenile"]
+
+
+def test_같은_시드는_같은_카드를_낸다():
+    a = [e for e in _card_run().events if e.kind == "cards"][0].payload["cards"]
+    b = [e for e in _card_run().events if e.kind == "cards"][0].payload["cards"]
+    assert [c["key"] for c in a] == [c["key"] for c in b]

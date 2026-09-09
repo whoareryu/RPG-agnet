@@ -14,13 +14,13 @@ from typing import Any
 from apps.arena.app.use_cases.agents.boss import boss_act, minion_act
 from apps.arena.app.use_cases.agents.character import character_act
 from apps.arena.app.use_cases.agents.orchestrator import make_plan
-from apps.arena.domain.constants.balance import CARD_SLOTS
+from apps.arena.app.use_cases.battle_setup import herald_present, maybe_summon, setup_battle
+from apps.arena.app.use_cases.learning_cards import apply_cards, cards_for
 from apps.arena.domain.entities.trace_event import TraceEvent, Tracer
 from apps.arena.domain.entities.types import (
     Action,
-    BuildChoice,
-    Character,
     MissionSpec,
+    PartyMember,
     Plan,
     RunConfig,
 )
@@ -30,14 +30,10 @@ from apps.arena.domain.services.battle.resolve import end_turn, resolve
 from apps.arena.domain.services.battle.state import (
     ActionRecord,
     Battle,
-    Status,
     display_names,
     living,
     outcome,
-    unit_from_character,
-    unit_from_enemy,
 )
-from apps.arena.domain.services.judgment.cards import choose_cards
 from apps.arena.domain.services.judgment.odds import odds
 from apps.arena.domain.services.judgment.replan import (
     ReplanState,
@@ -49,8 +45,6 @@ from apps.arena.domain.services.naming import boss_title as _boss_title
 from apps.arena.domain.services.rules.casualty import resolve_casualty
 from apps.arena.domain.services.rules.grade import grade_of
 from apps.arena.domain.services.rules.recovery import invested_of, recovery_cost
-
-PartyMember = tuple[Character, BuildChoice, str]  # (캐릭터, 빌드, 말투)
 
 # 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). 턴을 받아 "지금 울렸나"를
 # 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건 호출자의 장부다.
@@ -119,136 +113,6 @@ class _Collect:
             self.inner.emit(event)
 
 
-def _default_positions(members: list[PartyMember]) -> dict[str, str]:
-    """감독 OFF 의 고정 편성(설계 §6.1): AGI 최고 1명 후열, 나머지 전열.
-
-    혼자 나가면 뒤에 설 수 없다 — 앞을 막아 줄 사람이 없다.
-    """
-    if not members:
-        return {}
-    if len(members) == 1:
-        return {members[0][0].id: "front"}
-    fastest = max(members, key=lambda m: m[0].stats.agi)[0].id
-    return {m[0].id: ("back" if m[0].id == fastest else "front") for m in members}
-
-
-def setup_battle(
-    mission: MissionSpec,
-    members: list[PartyMember],
-    seed: int,
-    adaptation_on: bool,
-    boss_title: str | None = None,
-) -> Battle:
-    positions = _default_positions(members)
-    units = {}
-    for c, build, voice in members:
-        units[c.id] = unit_from_character(c, build, "party", positions[c.id], voice=voice)  # type: ignore[arg-type]
-    for e in mission.enemy.units:
-        unit = unit_from_enemy(e, "enemy")
-        if boss_title and unit.is_boss:
-            # 이름 없는 것이 이름을 얻는다. 유저마다 다르다.
-            unit.name = boss_title
-        units[e.id] = unit
-    return Battle(
-        seed=seed,
-        environment=mission.environment,
-        units=units,
-        adaptation_on=adaptation_on and mission.adaptation_on,
-        enemy_def=mission.enemy,
-        summon_every=mission.enemy.summon_every,
-        mission_no=mission.no,
-    )
-
-
-def _maybe_summon(battle: Battle, tracer: Tracer) -> None:
-    e = battle.enemy_def
-    if e is None or not battle.summon_every or e.summon_template is None:
-        return
-    if battle.summoned >= e.summon_max or battle.turn % battle.summon_every != 0:
-        return
-    boss_alive = any(u.is_boss and u.active for u in battle.units.values())
-    if not boss_alive:
-        return
-    battle.summoned += 1
-    unit = unit_from_enemy(e.summon_template, "enemy", suffix=f"_{battle.summoned}")
-    battle.units[unit.id] = unit
-    tracer.emit(
-        "summon", {"unit": unit.id, "name": unit.name, "count": battle.summoned}, actor=unit.id
-    )
-
-
-def _cards_for(
-    mission: MissionSpec,
-    record: "RunRecord",
-    history: list[ActionRecord],
-    pool: tuple[Any, ...],
-    members: list[PartyMember],
-) -> list[tuple[Any, dict[str, Any]]]:
-    """보스전 앞에서만 카드를 뽑는다. 일반전은 카드를 안 쓴다.
-
-    슬롯은 형태가 자랄수록 는다 — 3형태는 진화 트리가 아니라 유저의 실패
-    기록이다(기획서 v3 §8.4).
-    """
-    slots = CARD_SLOTS.get(mission.casualty_tier, 0)
-    if not slots or not pool:
-        return []
-    # 실제 원거리 대원을 센다. 예전에는 빈 집합을 박아 둬서 「사거리」 카드가
-    # 영원히 안 나왔다 — 카드 풀 3장 중 1장이 죽은 코드였다(QA 2026-09-09 C1·J4).
-    ranged = {c.id for c, build, _ in members if build.weapon.ranged}
-    return choose_cards(history, ranged, record.forsaken, slots, pool)
-
-
-def _apply_cards(battle: Battle, cards: list[tuple[Any, dict[str, Any]]], tracer: Tracer) -> None:
-    """보스전 시작에 카드가 펼쳐진다(기획서 v3 §8.4).
-
-    실효는 기존 메커니즘으로만 낸다 — focus 는 이미 있는 boss_focus 를 쓰고,
-    ranged_block 은 blind 상태를 건다. 새 효과를 만들지 않는다.
-    """
-    펼친_것 = []
-    for card, why in cards:
-        applied: dict[str, Any] = {}
-        if card.effect == "focus":
-            대상 = why.get("member")
-            if 대상 not in battle.units and why.get("char_class"):
-                # 굴에 두고 온 사람은 정의상 이 판에 없다. 그것이 배운 것은 그
-                # 사람 자체가 아니라 **그 병과를 상대하는 법**이다 — 지금 그
-                # 자리에 선 사람을 노린다(QA 2026-09-09 J5·T5).
-                같은_병과 = [
-                    u.id
-                    for u in battle.units.values()
-                    if u.faction == battle.party and u.char_class == why["char_class"] and u.alive
-                ]
-                if 같은_병과:
-                    대상 = 같은_병과[0]
-                    applied = {"inherited_from": why.get("member")}
-            if 대상 in battle.units:
-                battle.boss_focus = 대상
-                applied = {**applied, "field": "boss_focus", "after": 대상}
-        elif card.effect == "ranged_block":
-            맞은_사람 = [
-                u.id for u in battle.units.values() if u.faction == battle.party and u.weapon.ranged
-            ]
-            for uid in 맞은_사람:
-                battle.units[uid].statuses.append(
-                    Status("blind", battle.turn_limit, card.magnitude)
-                )
-            applied = {"field": "blind", "value": card.magnitude, "units": 맞은_사람}
-        펼친_것.append(
-            {
-                "key": card.key,
-                "name": card.name,
-                "source": card.source,
-                # 출처 라운드·인물·종 셋이 다 링크돼야 한다(기획서 v3 §11).
-                # 라운드가 없으면 "판을 넘는 학습" 이 아니라 그냥 표시다.
-                "round": why.get("round", 0),
-                "observation": card.observation.format(**why),
-                "evidence": why,
-                "applied": applied,
-            }
-        )
-    tracer.emit("cards", {"cards": 펼친_것})
-
-
 def _order_retreat(battle: Battle, plan: Plan, odds_value: float, tracer: Tracer) -> None:
     """감독의 포기 — 진영 전체 후퇴(설계 §5.3). 유닛별 FLEE 는 턴 루프가 굴린다."""
     battle.retreat_ordered = True
@@ -273,32 +137,35 @@ def _emit_resolution(tracer: Tracer, rec: Any, action: Action, actor: str) -> No
         )
 
 
-def herald_present(battle: Battle) -> bool:
-    """나팔을 든 사람이 아직 서 있는가(기획서 v3 §8.2).
+@dataclass(frozen=True)
+class RunContext:
+    """한 런 내내 그대로인 것들. 판마다 다시 넘기지 않는다.
 
-    어느 물건이 나팔인지는 콘텐츠가 안다 — 여기서는 `is_horn` 만 본다.
+    인자 열셋짜리 함수를 읽고 고치는 것은 사람도 모델도 못 한다
+    (QA 2026-09-09 C6). 판마다 바뀌는 것(미션·멤버·카드·호칭)만 인자로 남긴다.
     """
-    return any(
-        u.faction == battle.party and u.active and u.weapon.is_horn for u in battle.units.values()
-    )
+
+    model: DecisionModel
+    dice: Dice
+    tracer: Tracer
+    seed: int
+    orchestrator_on: bool
+    adaptation_on: bool
 
 
 def play_mission(
     mission: MissionSpec,
     members: list[PartyMember],
-    model: DecisionModel,
-    dice: Dice,
-    tracer: Tracer,
-    orchestrator_on: bool,
-    adaptation_on: bool,
-    seed: int,
+    ctx: RunContext,
     horn: HornFn | None = None,
     boss_title: str | None = None,
     cards: list[tuple[Any, dict[str, Any]]] | None = None,
     res_history: list[ActionRecord] | None = None,
     gate: BattleGateFn | None = None,
 ) -> MissionResult:
-    battle = setup_battle(mission, members, seed, adaptation_on, boss_title)
+    model, dice, tracer = ctx.model, ctx.dice, ctx.tracer
+    orchestrator_on, adaptation_on = ctx.orchestrator_on, ctx.adaptation_on
+    battle = setup_battle(mission, members, ctx.seed, adaptation_on, boss_title)
     tracer.mission = mission.no
     tracer.turn = 0
     calls_before = getattr(model, "calls_used", 0)
@@ -338,7 +205,7 @@ def play_mission(
     # 판이 열리고 나서 카드가 펼쳐진다(기획서 v3 §8.4). 그 전에 찍으면
     # tracer 가 아직 이전 판을 가리켜 이벤트가 엉뚱한 회차를 달고 나간다.
     if cards:
-        _apply_cards(battle, cards, tracer)
+        apply_cards(battle, cards, tracer)
 
     if gate is not None:
         gate(True)
@@ -396,7 +263,7 @@ def play_mission(
             result = outcome(battle)
             break
 
-        _maybe_summon(battle, tracer)
+        maybe_summon(battle, tracer)
 
         odds_value, odds_bd = odds(battle, battle.party)
         tracer.emit(
@@ -540,6 +407,14 @@ def run(
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
     model = model_factory(len(config.missions))
     dice = dice_factory(config.seed)
+    ctx = RunContext(
+        model=model,
+        dice=dice,
+        tracer=tracer,
+        seed=config.seed,
+        orchestrator_on=config.orchestrator_on,
+        adaptation_on=config.adaptation_on,
+    )
     record = RunRecord(run_id=run_id, config=_config_payload(config, members))
 
     tracer.emit("run_start", record.config)
@@ -548,15 +423,10 @@ def run(
         res = play_mission(
             mission,
             members,
-            model,
-            dice,
-            tracer,
-            orchestrator_on=config.orchestrator_on,
-            adaptation_on=config.adaptation_on,
-            seed=config.seed,
+            ctx,
             horn=horn,
             boss_title=record.boss_title,
-            cards=_cards_for(mission, record, 지난_기록, card_pool, members),
+            cards=cards_for(mission, record.forsaken, 지난_기록, card_pool, members),
             res_history=지난_기록,
             gate=gate,
         )

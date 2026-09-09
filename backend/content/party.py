@@ -3,8 +3,7 @@
 from dataclasses import replace
 
 from apps.arena.app.use_cases.agents.narration import voice
-from apps.arena.app.use_cases.runner import PartyMember
-from apps.arena.domain.entities.types import Character, RunConfig
+from apps.arena.domain.entities.types import Character, PartyMember, RunConfig
 from apps.arena.domain.services.rules.stats import allocate
 from content.classes import CLASSES, choose_build
 from content.roster import PRESET_ALLOCATIONS, ROSTER_BY_ID

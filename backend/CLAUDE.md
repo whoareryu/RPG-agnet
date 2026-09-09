@@ -191,11 +191,11 @@ backend/
         │   ├── constants/ balance.py         밸런스 수치의 단일 출처
         │   ├── ports/     ports.py           Dice · DecisionModel · TraceSink · RunStore
         │   └── services/  josa
-        │       ├── rules/     body · combat · disposition · equipment · stats
+        │       ├── rules/     body · combat · disposition · equipment · stats · casualty · grade · recovery
         │       ├── battle/    state · order · resolve
         │       └── judgment/  compliance · odds · replan · visibility · training
         ├── app/                             유스케이스. domain 만 안다
-        │   └── use_cases/ runner.py
+        │   └── use_cases/ runner · battle_setup · learning_cards
         │       ├── agents/       orchestrator · character · boss · prompts · schemas · narration
         │       └── intermission/ training · life_event · growth
         ├── adapter/                         최외층. 안쪽을 전부 안다

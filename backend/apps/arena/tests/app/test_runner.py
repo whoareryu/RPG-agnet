@@ -315,7 +315,7 @@ def test_호칭이_붙으면_보스가_그_이름으로_선다():
     충분히 쉬워 그런 시드가 없고, 있더라도 밸런스가 바뀌면 테스트가 조용히
     공허해진다. 적용 자체를 직접 잰다.
     """
-    from apps.arena.app.use_cases.runner import setup_battle
+    from apps.arena.app.use_cases.battle_setup import setup_battle
     from content.missions import MISSION_JUVENILE_BOSS
 
     members = build_party(_config())
@@ -455,7 +455,8 @@ def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건
     그것이 배운 것은 사람이 아니라 **그 병과를 상대하는 법**이다.
     """
     from apps.arena.adapter.outbound.sinks.list_sink import ListSink
-    from apps.arena.app.use_cases.runner import _apply_cards, setup_battle
+    from apps.arena.app.use_cases.battle_setup import setup_battle
+    from apps.arena.app.use_cases.learning_cards import apply_cards
     from apps.arena.domain.entities.trace_event import Tracer
     from apps.arena.domain.services.judgment.cards import choose_cards
     from content.cards import CARDS
@@ -467,7 +468,7 @@ def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건
     tracer = Tracer("t", sink, clock=lambda: "T")
     # 굴에 두고 온 장궁병 — 이 판에 없다. 그런데 토마가 같은 병과로 서 있다.
     cards = choose_cards([], set(), (("someone", "archer", 7),), 3, CARDS)
-    _apply_cards(b, cards, tracer)
+    apply_cards(b, cards, tracer)
     펼친 = sink.events[-1].payload["cards"]
     섭식 = next(c for c in 펼친 if c["key"] == "devoured")
     assert 섭식["applied"], "섭식이 여전히 무효다"
@@ -630,7 +631,7 @@ def test_지연된_신호도_한_번만_터진다():
 
 def test_전령관이_쓰러지면_그_판은_지연을_받는다():
     """부는 사람이 서 있어야 제때 분다 — 나팔은 쓰러진 사람이 불지 못한다."""
-    from apps.arena.app.use_cases.runner import herald_present, setup_battle
+    from apps.arena.app.use_cases.battle_setup import herald_present, setup_battle
     from content.missions import MISSION_JUVENILE_BOSS
 
     members = build_party(_config(lineup=("thoma", "aude", "martin")))

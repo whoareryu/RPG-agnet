@@ -200,6 +200,11 @@ class BuildChoice:
     rationale: str
 
 
+# 출전 한 사람 = (캐릭터, 빌드, 말투). app·content·adapter 가 같이 쓰는 어휘라
+# 도메인이 소유한다 — 러너에 두면 content 가 유스케이스를 import 하게 된다.
+PartyMember = tuple[Character, BuildChoice, str]
+
+
 @dataclass(frozen=True)
 class Environment:
     """규칙 엔진의 수정자(설계 §5.5). 편성 장면에서 서술과 수치가 함께 프롬프트에 들어간다."""

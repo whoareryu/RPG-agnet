@@ -1,6 +1,12 @@
 from dataclasses import replace
 
 from apps.arena.adapter.outbound.strategies.dice import FixedDice
+from apps.arena.domain.constants.balance import (
+    FLEE_BASE,
+    FLEE_PER_AGI_DIFF,
+    HIT_BASE,
+    HIT_PER_AGI_DIFF,
+)
 from apps.arena.domain.services.battle.order import turn_order
 from apps.arena.domain.services.battle.state import Battle, unit_from_character, unit_from_enemy
 from apps.arena.domain.services.rules.combat import damage, flee_chance, hit_chance, speed
@@ -32,17 +38,20 @@ def _battle(env=MINE, party=("martin", "gilles", "thoma"), **overrides):
 def test_명중은_기본_60에_민첩차를_더한다():
     b = _battle()
     needed, bd = hit_chance(b.units["thoma"], b.units["minotaur"], MINE)
-    # 토마 AGI 16 vs 그것 9 → +14. 마른 몸에 장궁(무게등급 2) 이라 무기 효율 -10.
-    assert needed == 64
-    assert ("민첩 차", 14) in bd and ("무기 효율", -10) in bd
+    # 수치를 박지 않는다 — 밸런스를 튜닝하면 같이 움직인다(QA 2026-09-09).
+    # 마른 몸에 장궁(무게등급 2) 이라 무기 효율 페널티가 함께 붙는다.
+    차 = (b.units["thoma"].stats.agi - b.units["minotaur"].stats.agi) * HIT_PER_AGI_DIFF
+    assert ("민첩 차", 차) in bd and ("무기 효율", -10) in bd
+    assert needed == HIT_BASE + 차 - 10
 
 
 def test_후열_원거리는_폐광에서_거리_페널티를_받는다():
     b = _battle()
+    전열, _ = hit_chance(b.units["thoma"], b.units["minotaur"], MINE)
     b.units["thoma"].position = "back"
     needed, bd = hit_chance(b.units["thoma"], b.units["minotaur"], MINE)
-    assert needed == 54
-    assert ("환경 폐광 거리", -10) in bd
+    assert ("환경 폐광 거리", -MINE.range_penalty) in bd
+    assert needed == 전열 - MINE.range_penalty
 
 
 def test_행운은_굴림에만_소폭_걸린다():
@@ -117,4 +126,5 @@ def test_행동_순서는_속도_내림차순이고_시드에_결정된다():
 def test_도망_성공률은_적_최고_민첩과의_차다():
     b = _battle()
     needed, _ = flee_chance(b.units["thoma"], [b.units["minotaur"]])
-    assert needed == 50 + (16 - 9) * 3
+    차 = b.units["thoma"].stats.agi - b.units["minotaur"].stats.agi
+    assert needed == FLEE_BASE + 차 * FLEE_PER_AGI_DIFF

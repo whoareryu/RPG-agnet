@@ -428,14 +428,22 @@ def test_원거리_편성이면_사거리_카드가_나온다():
 
     러너를 **통과하는** 경로로 잰다.
     """
-    # 토마(장궁)·오드(나팔) 가 원거리다.
+    from content.classes import WEAPONS
+
+    # 토마(장궁)·오드(나팔) 가 원거리다. 다만 앞판에서 누가 끌려가면 보스전에
+    # 서는 원거리 수가 줄어든다 — 기대값을 **보스전에 실제로 선 사람**에게서
+    # 뽑는다. 그래야 밸런스 튜닝이 이 테스트를 깨뜨리지 않는다.
     rec = _card_run(seed=3, lineup=("thoma", "aude", "martin"))
+    보스_시작 = [e for e in rec.events if e.kind == "mission_start"][1]
+    선_원거리 = [u["id"] for u in 보스_시작.payload["party"] if WEAPONS[u["weapon"]].ranged]
+    assert 선_원거리, "원거리가 보스전에 하나도 안 섰다 — 다른 시드로 재야 한다"
+
     cards = [e for e in rec.events if e.kind == "cards"][0].payload["cards"]
     keys = {c["key"] for c in cards}
-    assert "range" in keys, f"원거리 둘을 내보냈는데 「사거리」가 없다: {keys}"
+    assert "range" in keys, f"원거리를 내보냈는데 「사거리」가 없다: {keys}"
     사거리 = next(c for c in cards if c["key"] == "range")
-    assert 사거리["evidence"]["count"] >= 2
-    assert 사거리["applied"], "「사거리」가 아무것도 안 했다"
+    assert 사거리["evidence"]["count"] == len(선_원거리)
+    assert 사거리["applied"]["units"] == 선_원거리, "「사거리」가 원거리 아닌 사람을 겨눴다"
 
 
 def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건다():

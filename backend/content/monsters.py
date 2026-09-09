@@ -76,14 +76,15 @@ GOBLIN_BAND = EnemyDef(
 GNOLL_PACK = EnemyDef(
     name="놀 무리",
     description=(
-        "밤에 움직이고 측면으로 돈다. 성한 사람을 피하고 **부상자와 낙오자부터** "
-        "문다. 누구를 뒤에 두는가가 여기서 처음 문제가 된다."
+        "밤에 움직이고 측면으로 돈다. 성한 사람을 피하고 부상자와 낙오자부터 "
+        "문다. 누구를 뒤에 두는가가 여기서 처음 문제가 된다. "
+        "고블린이 뒤에서 돌을 던진다 — 여름은 두 종이 함께 온다(기획서 v3 §2.2)."
     ),
     units=(
         EnemyUnitDef(
             "gnoll_a",
             "놀 사냥꾼",
-            Stats(13, 13, 11, 5, 6, 5),
+            Stats(15, 14, 13, 5, 6, 5),
             Body(182, "normal", 78),
             갈고리,
             ARMORS["가죽 갑옷"],
@@ -93,12 +94,23 @@ GNOLL_PACK = EnemyDef(
         EnemyUnitDef(
             "gnoll_b",
             "놀 추적자",
-            Stats(11, 15, 10, 5, 7, 6),
+            Stats(13, 16, 12, 5, 7, 6),
             Body(176, "slim", 68),
-            녹슨_단검,
+            갈고리,
             ARMORS["가죽 갑옷"],
             (물어뜯기,),
             "front",
+        ),
+        _고블린,
+        EnemyUnitDef(
+            "goblin_slinger",
+            "고블린 투석수",
+            Stats(7, 12, 6, 4, 5, 7),
+            Body(138, "slim", 36),
+            투석,
+            ARMORS["가죽 갑옷"],
+            (),
+            "back",
         ),
     ),
 )
@@ -115,10 +127,10 @@ JUVENILE_MINOTAUR = EnemyDef(
         EnemyUnitDef(
             "minotaur",
             "굴의 그것",
-            Stats(15, 9, 16, 6, 8, 6),
+            Stats(17, 10, 19, 6, 8, 6),
             Body(230, "sturdy", 190),
             뿔,
-            ARMORS["사슬 갑옷"],
+            ARMORS["판금 갑옷"],
             (들이받기, 포효),
             "front",
             is_boss=True,

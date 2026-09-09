@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 
+// 잔여 횟수의 기본값. 서버가 `/roster/preset.horn_charges` 로 내려주는 값이
+// 진짜이고(수치 단일 출처), 이건 그것이 아직 안 왔을 때의 자리다.
 const CHARGES = 3;
 
 /**
  * 뿔피리 — 유저가 전투 중에 할 수 있는 유일한 일(기획서 v3 §8.2).
  *
  * 불면 즉시 이탈이다. 전멸은 피하지만 목표는 실패하고 보수는 없다.
- * 불지 않으면 중대장이 스스로 판단한다 — 물러날 줄 아는가, 그것이 이
- * 중대장이 증명해야 하는 것이다.
+ * 불지 않으면 단장이 스스로 판단한다 — 물러날 줄 아는가, 그것이 이
+ * 단장이 증명해야 하는 것이다.
  *
  * 세 번인 이유는 설정이 아니라 설계다. 무한이면 유저가 조종하는 게임이 되고,
  * 0 이면 관전이 된다. 세 번이면 매 판 "지금인가" 를 묻게 된다.
@@ -39,7 +41,10 @@ export default function HornButton({
       const body = await r.json().catch(() => ({}));
       if (r.ok) {
         setLeft(Number(body.horn_left ?? left - 1));
-        setNote("뿔피리를 불었다. 대열이 물러선다.");
+        // 200 은 "신호를 보냈다" 까지다. 실제로 닿았는지는 `horn` 트레이스
+        // 이벤트가 말한다 — 전령관이 없으면 한 턴 늦고, 그 사이 판이 끝나면
+        // 아예 안 닿는다. 여기서 단언하면 화면이 거짓말한다(QA 재검 P2-K).
+        setNote("신호를 보냈다. 전령관이 받으면 대열이 물러선다.");
       } else {
         setNote(String(body.detail ?? "지금은 부를 수 없다"));
       }
@@ -80,7 +85,7 @@ export default function HornButton({
         <div className="stack" style={{ gap: 6 }}>
           <p className="small" style={{ margin: 0 }}>
             지금 불면 <strong>즉시 이탈</strong>이다. 목표는 실패하고 보수는 없다.
-            불지 않으면 중대장이 스스로 판단한다.
+            불지 않으면 단장이 스스로 판단한다.
           </p>
           <div className="row" style={{ gap: 6 }}>
             <button className="btn btn-sm btn-primary" disabled={busy} onClick={blow}>

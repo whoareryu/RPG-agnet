@@ -17,7 +17,6 @@ COPY eval/ eval/
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     RPG_MODEL=fake \
-    RPG_PACE_S=0.2 \
     RPG_RUNS_DIR=/data/runs \
     RPG_EXPERIMENTS_DIR=/app/eval/out
 

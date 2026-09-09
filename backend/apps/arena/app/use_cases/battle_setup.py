@@ -71,11 +71,19 @@ def maybe_summon(battle: Battle, tracer: Tracer) -> None:
     )
 
 
-def herald_present(battle: Battle) -> bool:
-    """나팔을 든 사람이 아직 서 있는가(기획서 v3 §8.2).
+# 뿔피리를 부는 병과(기획서 v3 §8.2 — "뿔피리는 **전령관**이 분다").
+HERALD_CLASS = "bard"
 
-    어느 물건이 나팔인지는 콘텐츠가 안다 — 여기서는 `is_horn` 만 본다.
+
+def herald_present(battle: Battle) -> bool:
+    """전령관이 아직 서 있는가(기획서 v3 §8.2).
+
+    **무기가 아니라 병과로 본다.** 나팔(`is_horn`)로 판정했더니, 전령관에게
+    힘을 12 이상 찍으면 `choose_build` 가 「단검과 붕대」를 쥐여 주어 **육성이
+    병과 능력을 빼앗았다** — 화면은 "전령관 있음" 이라 말하고 엔진은 아니라고
+    했다(QA 재검 2026-09-09 P1-E). 기획서가 말하는 것은 역할이지 물건이 아니다.
     """
     return any(
-        u.faction == battle.party and u.active and u.weapon.is_horn for u in battle.units.values()
+        u.faction == battle.party and u.active and u.char_class == HERALD_CLASS
+        for u in battle.units.values()
     )

@@ -78,6 +78,10 @@ class RunSession:
         # 몇 초 동안 창이 열린다 — 그때 받은 신호가 다음 판 1턴에 터진다
         # (QA 2026-09-09 T1·C3·J14, 재현 2회).
         self.in_battle = threading.Event()
+        # 리플레이 런은 유저 입력을 **녹화에서** 재생한다. 세션 훅을 아무도
+        # 부르지 않으므로 여기서 받은 신호는 소비자가 없어 영원히 남고, 이후
+        # 모든 요청이 "이미 뿔피리가 울렸다" 로 막힌다(QA 재검 2026-09-09 P1-D).
+        self.replaying = False
         # 회수 결정 — 끌려간 대원을 다시 데려올 것인가(기획서 v3 §6.8).
         # 화면이 답하지 않으면 미지불이다. 기한을 넘기면 자동 미지불이라는
         # 규칙이 그대로 기본값이 된다.
@@ -94,6 +98,8 @@ class RunSession:
         """
         if self.done.is_set():
             return "이미 끝난 판이다"
+        if self.replaying:
+            return "리플레이는 다시 불 수 없다 — 녹화된 판을 그대로 되감는다"
         if self.horn_left <= 0:
             return "뿔피리를 다 썼다"
         # 이미 울린 신호가 아직 안 닿았다. 또 받으면 횟수만 닳고 효과는 하나다.
@@ -109,15 +115,22 @@ class RunSession:
         self.horn_left -= 1
         self.horn_pending.set()
 
-    def horn_signal(self, turn: int) -> bool:
+    def close_battle(self) -> None:
+        """판이 끝났다. 아직 안 닿은 신호를 여기서 버린다.
+
+        묵은 신호를 "1턴이면 버린다" 로 막던 때가 있었는데, `gate(True)` 가
+        `make_plan`(모델 호출) **앞에서** 열리므로 그 사이에 들어온 **정상**
+        신호까지 먹었다 — 200 을 받고 충전이 닳는데 아무 일도 안 일어났다
+        (QA 재검 2026-09-09 P1-C). 판 경계는 게이트가 정확히 안다.
+        """
+        self.in_battle.clear()
+        self.horn_pending.clear()
+
+    def horn_signal(self, mission: int, turn: int) -> bool:
         """턴 시작에 core 가 묻는다. 울렸으면 한 번만 참을 준다.
 
-        1턴이면 이 판이 막 시작한 것이다 — 이전 판에서 넘어온 묵은 신호를
-        여기서 버린다. 러너가 판 경계를 알려 주지 않아도 안전하다.
+        회차는 리플레이 훅이 쓴다 — 세션은 "지금 판" 만 알면 되므로 안 본다.
         """
-        if turn <= 1 and self.horn_pending.is_set():
-            self.horn_pending.clear()
-            return False
         if self.horn_pending.is_set():
             self.horn_pending.clear()
             return True
@@ -288,14 +301,23 @@ def build_app(
         session = RunSession(new_id, cfg)
         sessions[new_id] = session
         events = list(record.events)
-        # 리플레이도 같은 속도로 흐른다 — 데모에서 뿔피리를 누를 수 있어야 한다.
-        pace = pace_seconds()
+        # 리플레이도 같은 속도로 흐른다 — 데모에서 판을 눈으로 따라갈 수 있어야
+        # 한다. 다만 뿔피리는 받지 않는다(녹화를 되감는 중이다 — `replaying`).
+        pace = pace_seconds("fake")
 
         # **유저 입력도 재생한다**(QA 2026-09-09 J1). 모델 판단만 되감고 뿔피리·회수를
         # 비워 두면 원본이 「철수」로 끝난 판이 리플레이에서는 「패배」로 끝난다 —
         # "같은 시드 = 같은 판" 이 유저 입력이 낀 판에서 깨진다.
         # 재료는 이미 트레이스에 있다: horn 은 turn, recovery 는 member·paid.
-        horn_turns = {(e.mission, e.payload.get("turn")) for e in events if e.kind == "horn"}
+        # **원래 분 턴**으로 되돌린다. `turn` 은 신호가 **닿은** 턴이라, 전령관이
+        # 없는 편성에서는 리플레이가 이미 늦춰진 턴에 다시 불고 러너가 또 한 턴을
+        # 민다 — 왕복할 때마다 1턴씩 밀린다(QA 재검 2026-09-09 P0-B).
+        # 회차도 함께 맞춘다: 안 그러면 6회차에 분 것이 7회차에서 터진다(P0-A).
+        horn_turns = {
+            (e.mission, e.payload.get("delayed_from") or e.payload.get("turn"))
+            for e in events
+            if e.kind == "horn"
+        }
         paid_members = {
             e.payload.get("member")
             for e in events
@@ -303,16 +325,16 @@ def build_app(
         }
         fired: set[tuple[int, int]] = set()
 
-        def replay_horn(turn: int) -> bool:
-            for m, t in horn_turns:
-                if t == turn and (m, t) not in fired:
-                    fired.add((m, t))
-                    return True
+        def replay_horn(mission: int, turn: int) -> bool:
+            if (mission, turn) in horn_turns and (mission, turn) not in fired:
+                fired.add((mission, turn))
+                return True
             return False
 
         def replay_recovery(ids: list[str], _costs: dict[str, int], _t: Tracer) -> set[str]:
             return {i for i in ids if i in paid_members}
 
+        session.replaying = True
         _start(
             session,
             members,
@@ -438,7 +460,7 @@ def build_app(
                     horn=horn or session.horn_signal,
                     recovery=recovery_fn or _recovery_for(session),
                     card_pool=CARDS,
-                    gate=lambda on, s=session: s.in_battle.set() if on else s.in_battle.clear(),
+                    gate=lambda on, s=session: s.in_battle.set() if on else s.close_battle(),
                 )
                 try:
                     store.save(record)

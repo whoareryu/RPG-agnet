@@ -245,7 +245,7 @@ def _horn_at(turn: int):
     """지정한 턴에 한 번만 울리는 뿔피리. 세션의 큐를 흉내낸다."""
     state = {"blown": False}
 
-    def horn(battle_turn: int) -> bool:
+    def horn(_mission: int, battle_turn: int) -> bool:
         if battle_turn >= turn and not state["blown"]:
             state["blown"] = True
             return True
@@ -593,7 +593,7 @@ def test_전령관이_없으면_신호가_한_턴_늦는다():
     def once():
         울린 = []
 
-        def horn(turn):
+        def horn(_mission, turn):
             if turn == 울린_턴 and not 울린:
                 울린.append(turn)
                 return True
@@ -616,7 +616,7 @@ def test_지연된_신호도_한_번만_터진다():
     """
     울린 = []
 
-    def once(turn):
+    def once(_mission, turn):
         if turn == 2 and not 울린:
             울린.append(turn)
             return True
@@ -652,3 +652,74 @@ def test_카드는_출처_라운드를_들고_온다():
     assert cards
     for c in cards:
         assert c["round"] in 회차, f"출처 라운드가 없거나 이 계약의 회차가 아니다: {c}"
+
+
+# ─── 원본 → 리플레이 왕복 (QA 재검 2026-09-09 P0-A·P0-B) ────────────────
+
+
+def _replay_horn(events):
+    """라우터의 리플레이 훅과 **같은 규칙**으로 유저 입력을 복원한다.
+
+    라우터가 이 규칙을 갖고 있었지만 그것을 지나는 테스트가 저장소에 하나도
+    없었다 — 그래서 "같은 시드 = 같은 판" 이 뿔피리가 낀 판에서 깨진 채
+    "고쳤다" 로 닫혔다. 규칙을 여기서 다시 적어 네 조합 전부를 지난다.
+    """
+    horn_turns = {
+        (e.mission, e.payload.get("delayed_from") or e.payload.get("turn"))
+        for e in events
+        if e.kind == "horn"
+    }
+    fired: set[tuple[int, int]] = set()
+
+    def horn(mission: int, turn: int) -> bool:
+        if (mission, turn) in horn_turns and (mission, turn) not in fired:
+            fired.add((mission, turn))
+            return True
+        return False
+
+    return horn
+
+
+def _판정(rec):
+    return (
+        [r.outcome for r in rec.results],
+        [r.grade for r in rec.results],
+        [
+            (e.mission, e.payload["turn"], e.payload.get("delayed_from"))
+            for e in rec.events
+            if e.kind == "horn"
+        ],
+        len(rec.events),
+    )
+
+
+@pytest.mark.parametrize(
+    "lineup",
+    [("thoma", "aude", "martin"), ("thoma", "gilles", "martin")],
+    ids=["전령관있음", "전령관없음"],
+)
+@pytest.mark.parametrize("판", [1, 2], ids=["1판에불기", "2판에불기"])
+def test_뿔피리가_낀_판도_리플레이가_같은_판을_낸다(lineup, 판):
+    """설계 §3.4 — 같은 시드 + 같은 트레이스 = 같은 판.
+
+    QA 재검 2026-09-09 P0-A·P0-B: 네 조합 중 **하나만** 일치했고 나머지 셋은
+    등급까지 갈렸다. 원인 둘 — 리플레이가 회차를 안 봐서 6회차 뿔피리가
+    7회차에서 터졌고, `delayed_from` 이 아니라 **닿은** 턴을 읽어 왕복마다
+    1턴씩 밀렸다. 리플레이 버튼은 데모에서 "그냥 랜덤 아니에요?" 에
+    답하는 버튼이다.
+    """
+    회차 = MISSIONS_A[판 - 1].no
+    잰다 = {"blown": False}
+
+    def 원본_뿔피리(mission: int, turn: int) -> bool:
+        if mission == 회차 and turn == 3 and not 잰다["blown"]:
+            잰다["blown"] = True
+            return True
+        return False
+
+    cfg = _config(seed=11, lineup=lineup)
+    원본 = _run(cfg, run_id="orig", horn=원본_뿔피리)
+    assert any(e.kind == "horn" for e in 원본.events), "이 조합에서 뿔피리가 안 울렸다"
+
+    리플레이 = _run(cfg, run_id="replay", horn=_replay_horn(원본.events))
+    assert _판정(리플레이) == _판정(원본)

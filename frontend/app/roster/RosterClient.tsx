@@ -203,14 +203,14 @@ export default function RosterClient({ preset }: { preset: PresetResponse }) {
             (QA 2026-09-09 U5). 출정 전에 한 줄로 알려 준다. */}
         <p className="small" style={{ margin: 0 }}>
           <strong>전투가 시작되면 당신이 할 수 있는 일은 뿔피리 {preset.horn_charges ?? 3}번뿐이다.</strong>{" "}
-          불면 전원 살아 나오지만 목표는 실패하고 보수는 없다. 불지 않으면 중대장이 스스로 물러날지 판단한다.
+          불면 전원 살아 나오지만 목표는 실패하고 보수는 없다. 불지 않으면 단장이 스스로 물러날지 판단한다.
           {/* 뿔피리는 전령관이 분다(기획서 v3 §8.2). 편성의 대가를 편성할 때
               보여준다 — 전투 중에 알면 늦다(QA 2026-09-09 T). */}
           {lineup.length > 0 && !lineup.some((id) => classes[id] === "bard") && (
             <>
               {" "}
               <span style={{ color: "var(--color-warn)" }}>
-                지금 편성에는 전령관이 없다 — 뿔피리 신호가 한 턴 늦게 닿는다.
+                지금 편성에는 전령관이 없다 — 뿔피리 신호가 한 턴 늦게 닿는다. 그 한 턴에 누가 쓰러질 수 있다.
               </span>
             </>
           )}

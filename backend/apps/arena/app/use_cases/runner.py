@@ -46,9 +46,14 @@ from apps.arena.domain.services.rules.casualty import resolve_casualty
 from apps.arena.domain.services.rules.grade import grade_of
 from apps.arena.domain.services.rules.recovery import invested_of, recovery_cost
 
-# 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). 턴을 받아 "지금 울렸나"를
-# 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건 호출자의 장부다.
-HornFn = Callable[[int], bool]
+# 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). **회차와 턴**을 받아
+# "지금 울렸나"를 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건
+# 호출자의 장부다.
+#
+# 회차를 넘기는 이유: 리플레이가 판을 구분하지 못하면 6회차에 분 뿔피리를
+# 7회차에서 분다 — 이겼던 판이 철수가 되고 철수한 판이 승리가 된다
+# (QA 재검 2026-09-09 P0-A). "같은 시드 = 같은 판" 이 여기서 깨졌다.
+HornFn = Callable[[int, int], bool]
 
 # 판 경계 알림 — 전투가 시작/종료할 때 한 번씩. 호출자가 "지금 전투 중인가" 를
 # 알아야 뿔피리 같은 전투 중 개입을 창 밖에서 받지 않는다(기획서 v3 §8.2).
@@ -239,12 +244,18 @@ def play_mission(
         # `horn` 이벤트는 **실제로 신호가 닿은 턴에 한 번만** 나간다. 지연을
         # 따로 이벤트로 내보내면 리플레이가 그 턴에도 뿔피리를 분다(J1 회귀).
         # 늦었다는 사실은 payload 의 `delayed_from` 이 말한다.
-        울렸나 = horn(battle.turn) if horn is not None else False
-        if 울렸나 and not herald_present(battle):
+        # **묵혀 둔 신호가 먼저다.** 새 입력을 먼저 보면, 전령관 없는 편성에서
+        # "안 울렸네" 하고 다시 누를 때마다 대기 중인 신호가 덮여 도착이 계속
+        # 밀린다 — 매 턴 누르면 충전 셋을 다 쓰고도 한 번도 안 울린다
+        # (QA 재검 2026-09-09 P0/P1-F). 패닉 연타가 벌점이 되면 안 된다.
+        새_신호 = horn(mission.no, battle.turn) if horn is not None else False
+        if 늦은_신호:
+            울렸나 = True  # 새 입력은 흡수된다 — 이미 부는 중이다
+        elif 새_신호 and not herald_present(battle):
             늦은_신호 = battle.turn
             울렸나 = False
-        elif 늦은_신호:
-            울렸나 = True
+        else:
+            울렸나 = 새_신호
         if 울렸나:
             나온_사람 = [u for u in battle.units.values() if u.faction == battle.party and u.active]
             battle.retreat_ordered = True
@@ -255,11 +266,13 @@ def play_mission(
                 {
                     "turn": battle.turn,
                     "withdrew": [u.id for u in 나온_사람],
+                    "delivered": True,
                     # 전령관이 없어 늦었으면 원래 울린 턴을 남긴다 — 그 한 턴에
                     # 무슨 일이 있었는지 인스펙터가 짚을 수 있어야 한다.
                     "delayed_from": 늦은_신호,
                 },
             )
+            늦은_신호 = None  # 닿았다 — 판 끝의 미도착 기록이 두 번 나가면 안 된다
             result = outcome(battle)
             break
 
@@ -322,6 +335,19 @@ def play_mission(
         end_turn(battle)
         if result is None:
             result = outcome(battle, end_of_turn=True)
+
+    # 신호가 닿기 전에 판이 끝났다. 횟수는 이미 닳았으므로 흔적 없이 사라지면
+    # 유저는 "전원 살려 나왔다" 고 믿는다(QA 재검 2026-09-09 P2-G, 실측 77회 중 3회).
+    if 늦은_신호 is not None:
+        tracer.emit(
+            "horn",
+            {
+                "turn": battle.turn,
+                "withdrew": [],
+                "delayed_from": 늦은_신호,
+                "delivered": False,
+            },
+        )
 
     units = battle.units.values()
     party_units = [u for u in units if u.faction == battle.party]

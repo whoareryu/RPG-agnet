@@ -88,6 +88,55 @@ function Body({ event, names, events }: { event: TraceEvent; names: Names; event
       return <KV rows={[["트리거", String(p.trigger)], ["내용", String(p.detail)]]} />;
     case "flee":
       return <KV rows={[["주사위", `${p.roll} (≤ ${p.needed} 이면 성공)`], ["결과", p.success ? "성공" : "실패"]]} />;
+    case "horn":
+      // 서사에서 가장 눌러 보고 싶은 줄인데 날 JSON 이었다(QA 재검 2026-09-09).
+      return (
+        <KV
+          rows={[
+            ["닿은 턴", String(p.turn)],
+            [
+              "부른 턴",
+              p.delayed_from ? `${p.delayed_from} → 전령관이 없어 한 턴 늦었다` : "즉시 닿았다",
+            ],
+            ["물러난 사람", (p.withdrew as string[] ?? []).map((s) => nameOf(s, names)).join(", ") || "없음"],
+            ["도착", p.delivered === false ? "닿기 전에 판이 끝났다" : "닿았다"],
+          ]}
+        />
+      );
+    case "boss_named":
+      return (
+        <KV
+          rows={[
+            ["누구를 데려갔나", nameOf(String(p.member), names)],
+            ["전", p.before ? String(p.before) : "이름이 없었다"],
+            ["후", String(p.after)],
+          ]}
+        />
+      );
+    case "recovery":
+      // 물음과 결정이 같은 종류로 온다 — payload 가 어느 쪽인지 말한다.
+      return p.awaiting_input ? (
+        <KV
+          rows={[
+            ["묻는 중", "굴에 끌려간 대원을 되찾을 것인가"],
+            [
+              "값",
+              Object.entries((p.costs as Record<string, number>) ?? {})
+                .map(([id, c]) => `${nameOf(id, names)} ${c}`)
+                .join(" · ") || "없음",
+            ],
+            ["기한", `${p.timeout_s}초 — 답하지 않으면 전원 미지불`],
+          ]}
+        />
+      ) : (
+        <KV
+          rows={[
+            ["대원", nameOf(String(p.member), names)],
+            ["값", String(p.cost)],
+            ["결정", p.paid ? "값을 치렀다 (회수 출동은 다음 계약)" : "굴에 두고 왔다 — 영구 상실"],
+          ]}
+        />
+      );
     case "casualty":
       // 이 판의 가장 무거운 판정이다. 굴림과 경계를 보여주지 않으면 그냥
       // 랜덤과 구별되지 않는다(QA 2026-09-09 J2).

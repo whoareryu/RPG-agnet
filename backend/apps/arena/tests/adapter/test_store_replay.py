@@ -151,3 +151,26 @@ def test_샘플_트레이스가_낡지_않았다():
         f"샘플이 낡았다 — `uv run python ../scripts/make_trace_sample.py` 를 돌린다 "
         f"(지금 {len(out)}줄 vs 커밋된 {len(committed)}줄)"
     )
+
+
+def test_Fake_는_기본으로_박자를_받는다():
+    """QA 재검 2026-09-09 — 기본 박자가 0 이라 2판 계약이 0.11초에 끝났다.
+
+    3턴에 뿔피리를 요청하면 409 「전투 중이 아니다」가 온다 — 로스터 화면이
+    굵은 글씨로 광고하는 유일한 개입 수단을 **물리적으로 누를 수 없었다.**
+    실모델은 이미 느리므로 박자를 안 받는다.
+    """
+    import os
+
+    from apps.arena.adapter.outbound.strategies.llm.select import FAKE_PACE_S, pace_seconds
+
+    있던 = os.environ.pop("RPG_PACE_S", None)
+    try:
+        assert pace_seconds("fake") == FAKE_PACE_S > 0
+        assert pace_seconds("anthropic") == 0.0
+        os.environ["RPG_PACE_S"] = "0"  # 환경변수가 이긴다 — 테스트·CI 는 0 으로 돈다
+        assert pace_seconds("fake") == 0.0
+    finally:
+        os.environ.pop("RPG_PACE_S", None)
+        if 있던 is not None:
+            os.environ["RPG_PACE_S"] = 있던

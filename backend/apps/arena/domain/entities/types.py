@@ -159,7 +159,6 @@ class Equipment:
     armor: int = 0
     is_long: bool = False  # 키 미달 페널티 대상
     ranged: bool = False  # 후열에서도 아무나 노린다. 근접은 전열이 살아 있으면 전열만
-    is_horn: bool = False  # 뿔피리를 부는 물건. 없는 편성은 신호가 늦는다(기획서 v3 §8.2)
 
 
 @dataclass(frozen=True)

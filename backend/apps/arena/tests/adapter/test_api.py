@@ -358,7 +358,7 @@ def test_뿔피리_세_번을_쓰면_네_번째는_거부된다():
     for i in range(HORN_CHARGES):
         assert s.horn_left == HORN_CHARGES - i
         s.blow_horn()
-        assert s.horn_signal(5) is True  # 판 중간 턴 — 신호가 닿는다
+        assert s.horn_signal(6, 5) is True  # 판 중간 턴 — 신호가 닿는다
     assert s.horn_left == 0
     # 네 번째. 라우터가 이 문장을 그대로 409 로 실어 보낸다.
     assert s.horn_refusal() == "뿔피리를 다 썼다"
@@ -380,7 +380,7 @@ def test_뿔피리_거절_사유_넷을_모두_지난다():
     s.blow_horn()
     assert s.horn_refusal() == "이미 뿔피리가 울렸다"
 
-    s.horn_signal(5)  # 신호가 닿았다
+    s.horn_signal(6, 5)  # 신호가 닿았다
     s.horn_left = 0
     assert s.horn_refusal() == "뿔피리를 다 썼다"
 
@@ -389,14 +389,25 @@ def test_뿔피리_거절_사유_넷을_모두_지난다():
     assert s.horn_refusal() == "이미 끝난 판이다"
 
 
-def test_판이_바뀌면_묵은_뿔피리_신호를_버린다():
-    """1턴은 판이 막 시작한 것이다 — 이전 판에서 넘어온 신호를 여기서 버린다."""
+def test_판이_끝나면_안_닿은_신호를_버린다():
+    """묵은 신호는 **판 경계**에서 버린다 — 게이트가 그 자리를 정확히 안다.
+
+    전에는 "1턴이면 버린다" 였는데, `gate(True)` 가 `make_plan`(모델 호출) 앞에서
+    열리므로 그 사이에 들어온 **정상** 신호까지 먹었다 — 200 을 받고 충전이
+    닳는데 아무 일도 안 일어났다(QA 재검 2026-09-09 P1-C).
+    """
     from apps.arena.adapter.inbound.api.v1.arena_router import RunSession
 
     s = RunSession("r", None)  # type: ignore[arg-type]
+    s.in_battle.set()
     s.blow_horn()
-    assert s.horn_signal(1) is False, "묵은 신호가 다음 판 1턴에 터졌다"
-    assert s.horn_signal(2) is False, "버린 신호가 되살아났다"
+    s.close_battle()
+    assert s.horn_signal(6, 1) is False, "묵은 신호가 다음 판에 터졌다"
+
+    # 판이 열린 채 1턴이면 그건 **정상 입력**이다. 먹지 않는다.
+    s.in_battle.set()
+    s.blow_horn()
+    assert s.horn_signal(6, 1) is True, "판 시작 창의 정상 신호를 먹었다"
 
 
 def test_회수_요청의_오타는_거절된다(client):
@@ -406,3 +417,16 @@ def test_회수_요청의_오타는_거절된다(client):
     run_id = client.post("/runs", json={"lineup": ["martin", "aude"], "seed": 5}).json()["run_id"]
     assert client.post(f"/runs/{run_id}/recovery", json={"payy": ["aude"]}).status_code == 422
     assert client.post(f"/runs/{run_id}/recovery", json={}).status_code == 422
+
+
+def test_리플레이_런에서는_뿔피리를_받지_않는다():
+    """QA 재검 2026-09-09 P1-D — 리플레이는 `session.horn_signal` 을 아무도 부르지
+    않는데 `horn_refusal()` 이 수락했다. 소비자가 없어 신호가 영원히 남고 이후
+    모든 요청이 409 「이미 뿔피리가 울렸다」로 막혔다 — 200 을 받고 충전이 닳은 뒤에.
+    """
+    from apps.arena.adapter.inbound.api.v1.arena_router import RunSession
+
+    s = RunSession("r", None)  # type: ignore[arg-type]
+    s.in_battle.set()
+    s.replaying = True
+    assert s.horn_refusal() == "리플레이는 다시 불 수 없다 — 녹화된 판을 그대로 되감는다"

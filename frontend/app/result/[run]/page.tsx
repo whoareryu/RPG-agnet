@@ -28,16 +28,11 @@ export default async function ResultPage({ params }: { params: Promise<{ run: st
   return (
     <main className="page page-narrow stack" style={{ gap: 16 }}>
       <div className="card-kicker">결산</div>
+      {/* 제목은 등급뿐이다. 호칭 문장은 아래에 한 번만 — 전에는 같은 IIFE 가
+          h1 안팎에 두 벌 있어 `<p>` 가 제목 안에 박히고 등급이 둘째 줄로 밀렸다
+          (QA 재검 2026-09-09, U2 수정 때 들어온 복붙 사고). */}
       <h1>
-        {(() => {
-        const named = events.findLast((e) => e.kind === "boss_named");
-        return named ? (
-          <p className="small" style={{ margin: 0 }}>
-            대원들은 그것을 <strong>「{String(named.payload.after)}」</strong>이라 부른다.
-          </p>
-        ) : null;
-      })()}
-      {results.map((r) => (r.grade ? GRADE_KO[r.grade] : OUTCOME_KO[r.outcome])).join(" · ") ||
+        {results.map((r) => (r.grade ? GRADE_KO[r.grade] : OUTCOME_KO[r.outcome])).join(" · ") ||
           "진행 중"}
       </h1>
       {(() => {
@@ -63,7 +58,7 @@ export default async function ResultPage({ params }: { params: Promise<{ run: st
               {r.grade ? GRADE_KO[r.grade] : OUTCOME_KO[r.outcome]}
             </span>
             <span className="small">{r.turns}턴</span>
-            {r.abandoned && <span className="tag tag-outline">중대장이 포기를 결정</span>}
+            {r.abandoned && <span className="tag tag-outline">단장이 포기를 결정</span>}
             {events.some((e) => e.kind === "horn" && e.mission === r.no) && (
               <span className="tag tag-outline">단주가 뿔피리를 불었다</span>
             )}

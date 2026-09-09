@@ -74,6 +74,12 @@ export default function BattleClient({ runId }: { runId: string }) {
     if (idx < 0 || sentFor.includes(events[idx].seq)) return null;
     return idx === events.length - 1 ? events[idx] : null;
   }, [events, sentFor]);
+  // 리플레이 런은 유저 입력을 녹화에서 재생한다 — 여기서 부는 신호는 소비자가
+  // 없어 충전만 닳고 이후 요청이 전부 409 가 된다(QA 재검 2026-09-09 P1-D).
+  const replaying = useMemo(
+    () => events.find((e) => e.kind === "run_start")?.payload.model === "replay",
+    [events],
+  );
   const missionStart = events.find((e) => e.kind === "mission_start");
   const title = missionStart ? String((missionStart.payload.name as string) ?? "") : "";
 
@@ -150,7 +156,15 @@ export default function BattleClient({ runId }: { runId: string }) {
             live={status === "live"}
             // 인터미션·회수 대기 중에는 백엔드가 거절한다. 눌러 보고 튕기기
             // 전에 이유를 보여 준다(QA 2026-09-09 U6).
-            reason={awaiting ? "야영지다 — 전투 중에만 분다" : askRecovery ? "회수를 먼저 정한다" : null}
+            reason={
+              replaying
+                ? "되감는 중이다 — 녹화된 판은 다시 부를 수 없다"
+                : awaiting
+                  ? "야영지다 — 전투 중에만 분다"
+                  : askRecovery
+                    ? "회수를 먼저 정한다"
+                    : null
+            }
           />
           {runEnd && (
             <Link className="btn btn-sm btn-primary" href={`/result/${runId}`}>

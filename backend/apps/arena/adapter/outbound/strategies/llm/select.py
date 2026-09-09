@@ -32,17 +32,26 @@ def build_model(name: str | None = None) -> DecisionModel:
     raise ValueError(f"모르는 모델: {name} (fake|gemini|anthropic)")
 
 
-def pace_seconds() -> float:
-    """RPG_PACE_S — decide() 한 번마다 쉬는 시간(초). 기본 0.
+# Fake 로 도는 판의 기본 박자(초/판단). 0 이면 2판 계약이 0.11초에 끝나
+# **뿔피리를 물리적으로 누를 수 없다** — 3턴에 요청하면 409 「전투 중이 아니다」가
+# 온다(QA 재검 2026-09-09, 실측 전투 창 0.04초). 로스터 화면은 굵은 글씨로
+# "당신이 할 수 있는 일은 뿔피리뿐이다" 라고 말한다. 기본값이 그 말을 거짓말로
+# 만들면 안 된다. 실모델은 이미 느리므로 0 이다.
+FAKE_PACE_S = 0.2
 
-    Fake 는 한 판을 수백 ms 에 끝낸다. 그러면 뿔피리를 누를 시간이 없다
-    (기획서 v3 §8.2). 배포 데모에서는 0.2~0.3 을 준다. 실모델은 이미
-    느리므로 0 이다.
+
+def pace_seconds(model_name: str = "fake") -> float:
+    """RPG_PACE_S — decide() 한 번마다 쉬는 시간(초).
+
+    환경변수가 있으면 그것이 이긴다. 없으면 Fake 만 박자를 받는다.
     """
-    try:
-        return float(os.environ.get("RPG_PACE_S", "0"))
-    except ValueError:
-        return 0.0
+    raw = os.environ.get("RPG_PACE_S")
+    if raw is not None:
+        try:
+            return float(raw)
+        except ValueError:
+            return 0.0
+    return FAKE_PACE_S if model_name == "fake" else 0.0
 
 
 def build_harness(
@@ -56,8 +65,9 @@ def build_harness(
     """
     per_mission = max_calls or int(os.environ.get("RPG_MAX_CALLS", MAX_CALLS))
     limit = per_mission * max(1, missions)
+    name = name or model_name_from_env()
     model = build_model(name)
-    pace = pace_seconds()
+    pace = pace_seconds(name)
     if pace:
         model = PacedModel(model, pace)
     return Harness(model, FakeModel(), max_calls=limit)

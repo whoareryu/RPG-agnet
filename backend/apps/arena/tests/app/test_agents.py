@@ -6,6 +6,7 @@ from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
 from apps.arena.app.use_cases.agents.boss import boss_act, detect_adaptation, minion_act
 from apps.arena.app.use_cases.agents.character import action_from, character_act
 from apps.arena.app.use_cases.agents.orchestrator import make_plan
+from apps.arena.domain.constants.balance import ADAPT_WALL_HP_RATIO
 from apps.arena.domain.entities.trace_event import Tracer
 from apps.arena.domain.entities.types import Action
 from apps.arena.domain.services.battle.state import (
@@ -152,22 +153,57 @@ def test_같은_아군이_3턴_연속_공격하면_집중_타격_적응():
     assert pattern == "repeat_attacker" and ev["actor"] == "martin"
 
 
-def test_공격이_전열에_막히면_전열_붕괴_적응():
-    """기획서 v3 §8.4 — 근접은 전열이 살아 있는 한 후열에 닿지 않는다.
+def _앞줄만(b, front="gilles"):
+    for u in b.units.values():
+        if u.faction == "party":
+            u.position = "front" if u.id == front else "back"
 
-    보스가 때린 것이 전부 앞줄이면, 뒤를 치려면 앞을 부수는 수밖에 없다.
-    파티 행동이 아니라 **보스 자신의 타격**을 본다.
+
+def test_전열이_맞고도_버티면_전열_붕괴_적응():
+    """기획서 v3 §8.4 — 앞줄이 **버틴다**는 것이 신호다.
+
+    QA 2026-09-09 J3: 전에는 "내 피해의 60% 이상이 앞줄에 갔는가" 를 봤다.
+    근접은 전열이 살아 있는 한 후열에 닿지 않으므로(resolve.py 의 reachable)
+    이 비율은 **구조적으로 항상 1.0** 이었다 — 실측 `{1.0: 134}`. 관측이 아니라
+    동어반복이었다.
+
+    지금 보는 것은 둘이다: 창 내내 앞줄을 때렸는가, 그런데도 그가 서 있는가.
     """
     b = _battle(party=("gilles", "martin", "thoma"))
     b.turn = 4
-    for u in b.units.values():
-        if u.faction == "party":
-            u.position = "front" if u.id == "gilles" else "back"
-    # 보스가 3턴 내내 전열의 베른만 때렸다.
-    _history(b, "minotaur", [1, 2, 3], target="gilles", dmg=20, faction="enemy")
+    _앞줄만(b)
+    벽 = b.units["gilles"]
+    # 최대 HP 의 절반 넘게 맞고도 서 있다.
+    _history(b, "minotaur", [1, 2, 3], target="gilles", dmg=벽.hp_max // 3 + 1, faction="enemy")
     _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
     pattern, ev = detect_adaptation(b, "minotaur")
     assert pattern == "frontline_wall" and ev["blocker"] == "gilles"
+    assert ev["absorbed"] > 0 and ev["ratio"] >= ADAPT_WALL_HP_RATIO
+
+
+def test_긁기만_해서는_전열이_벽이_아니다():
+    """맞았다고 다 벽이 아니다 — 창이 지나도록 **긁기만** 했으면 관측이 없다.
+
+    이 테스트가 실패하면 규칙이 다시 동어반복으로 돌아간 것이다.
+    """
+    b = _battle(party=("gilles", "martin", "thoma"))
+    b.turn = 4
+    _앞줄만(b)
+    _history(b, "minotaur", [1, 2, 3], target="gilles", dmg=1, faction="enemy")
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    assert detect_adaptation(b, "minotaur")[0] != "frontline_wall"
+
+
+def test_앞줄을_부수면_벽이_아니다():
+    """때려서 쓰러뜨렸으면 막힌 게 아니다 — 뒤가 열렸다."""
+    b = _battle(party=("gilles", "martin", "thoma"))
+    b.turn = 4
+    _앞줄만(b)
+    벽 = b.units["gilles"]
+    _history(b, "minotaur", [1, 2, 3], target="gilles", dmg=벽.hp_max, faction="enemy")
+    _history(b, "thoma", [1, 2, 3], dmg=0, action="DEFEND")
+    벽.hp, 벽.alive = 0, False
+    assert detect_adaptation(b, "minotaur")[0] != "frontline_wall"
 
 
 def test_치유_2회면_치유자_타격_적응():

@@ -10,8 +10,8 @@ from apps.arena.app.use_cases.agents.prompts import build_boss_prompt
 from apps.arena.app.use_cases.agents.schemas import ADAPTATIONS, BOSS_SCHEMA
 from apps.arena.domain.constants.balance import (
     ADAPT_DEFEND_RATIO,
-    ADAPT_FRONTLINE_RATIO,
     ADAPT_HEAL_COUNT,
+    ADAPT_WALL_HP_RATIO,
     ADAPT_WINDOW,
 )
 from apps.arena.domain.entities.trace_event import Tracer
@@ -58,33 +58,39 @@ def detect_adaptation(battle: Battle, boss_id: str) -> tuple[str | None, dict[st
                     "turns": sorted(hits),
                     "tie_rule": "먼저 공격을 시작한 쪽",
                 }
-    # ② 내 공격이 전열에 막힌다 — 방패병이 벽을 세웠다(기획서 v3 §8.4).
+    # ② 앞줄이 **버틴다** — 방패병이 벽을 세웠다(기획서 v3 §8.4).
     #
-    # 파티 행동이 아니라 **보스 자신의 타격**을 본다. 근접 공격은 전열이 살아
-    # 있는 한 후열에 닿지 않으므로(resolve.py 의 reachable), 내가 때린 것이
-    # 전부 앞줄이면 뒤를 치려면 앞을 부수는 수밖에 없다.
+    # 파티 행동이 아니라 **보스 자신의 타격**을 본다. 전에는 "내 피해의 60%
+    # 이상이 앞줄에 갔는가" 를 봤는데, 근접은 전열이 살아 있는 한 후열에 닿지
+    # 않으므로(resolve.py 의 reachable) 그 비율은 **항상 1.0** 이었다 —
+    # 관측이 아니라 동어반복이었다(QA 2026-09-09 J3).
+    #
+    # 벽의 신호는 둘이다: 창 내내 앞줄을 때렸는가, 그런데도 그가 서 있는가.
+    # 약한 앞줄이었다면 이미 쓰러져 뒤가 열렸을 것이다.
     mine = [
         h
         for h in battle.history
         if h.faction == boss.faction and window_start <= h.turn < battle.turn
     ]
-    dealt = sum(h.damage for h in mine)
     front_ids = {
         u.id for u in battle.units.values() if u.faction != boss.faction and u.position == "front"
     }
-    walled = sum(h.damage for h in mine if h.target in front_ids)
-    if "frontline_wall" not in already and dealt > 0 and walled / dealt >= ADAPT_FRONTLINE_RATIO:
+    맞은_턴 = {h.turn for h in mine if h.target in front_ids and h.damage > 0}
+    absorbed = sum(h.damage for h in mine if h.target in front_ids)
+    if "frontline_wall" not in already and len(맞은_턴) >= ADAPT_WINDOW:
         blocker = max(
             (u for u in battle.units.values() if u.id in front_ids and u.alive),
             key=lambda u: (u.armor.armor + u.weapon.armor, u.hp),
             default=None,
         )
-        if blocker is not None:
+        ratio = absorbed / blocker.hp_max if blocker else 0.0
+        if blocker is not None and ratio >= ADAPT_WALL_HP_RATIO:
             return "frontline_wall", {
                 "blocker": blocker.id,
-                "walled": walled,
-                "dealt": dealt,
-                "ratio": round(walled / dealt, 2),
+                "absorbed": absorbed,
+                "hp_max": blocker.hp_max,
+                "turns": sorted(맞은_턴),
+                "ratio": round(ratio, 2),
             }
     # ③ 치유 2회 이상
     heals = [h for h in recent if h.healed > 0]

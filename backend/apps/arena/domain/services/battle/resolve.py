@@ -216,6 +216,7 @@ def resolve(battle: Battle, actor_id: str, action: Action, dice: Dice) -> Resolu
             target=rec.target,
             damage=rec.total_damage,
             healed=healed,
+            mission=battle.mission_no,
         )
     )
     return rec

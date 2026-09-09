@@ -352,7 +352,8 @@ def test_결정하지_않으면_미지불로_영구_상실이다():
     rec = _taken_run()
     res = next(r for r in rec.results if r.taken)
     assert res.recovery_unpaid == res.taken and res.recovery_paid == ()
-    assert {m for m, _ in rec.forsaken} == set(res.taken), "미지불이 「섭식」 대상으로 남지 않았다"
+    두고_온 = {m for m, _, _ in rec.forsaken}
+    assert 두고_온 == set(res.taken), "미지불이 「섭식」 대상으로 남지 않았다"
 
 
 def test_지불하면_섭식_대상에서_빠진다():
@@ -465,7 +466,7 @@ def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건
     sink = ListSink()
     tracer = Tracer("t", sink, clock=lambda: "T")
     # 굴에 두고 온 장궁병 — 이 판에 없다. 그런데 토마가 같은 병과로 서 있다.
-    cards = choose_cards([], set(), (("someone", "archer"),), 3, CARDS)
+    cards = choose_cards([], set(), (("someone", "archer", 7),), 3, CARDS)
     _apply_cards(b, cards, tracer)
     펼친 = sink.events[-1].payload["cards"]
     섭식 = next(c for c in 펼친 if c["key"] == "devoured")
@@ -571,3 +572,82 @@ def test_회수를_묻기_전에_비용이_화면으로_간다():
     결정 = [e for e in rec.events if e.kind == "recovery" and not e.payload.get("awaiting_input")]
     assert 물음 and 결정, "묻는 이벤트와 답하는 이벤트가 둘 다 있어야 한다"
     assert 물음[0].seq < 결정[0].seq, "값을 보여주기 전에 결정을 기록했다"
+
+
+# ─── 전령관 부재 시 신호 지연 (기획서 v3 §8.2) ──────────────────────────
+
+
+def _horn_turns(rec):
+    return [e.payload["turn"] for e in rec.events if e.kind == "horn"]
+
+
+def test_전령관이_없으면_신호가_한_턴_늦는다():
+    """QA 2026-09-09 T·J8 — 주석은 "그 지연은 core 가 판단한다" 고 말했지만
+    core 에는 그 코드가 없었다. 기획서 v3 §8.2 의 병과 가치가 통째로 비어 있었다.
+
+    뿔피리는 전령관이 분다. 없으면 누군가 대신 부느라 한 턴을 잃는다.
+    """
+    울린_턴 = 3
+
+    def once():
+        울린 = []
+
+        def horn(turn):
+            if turn == 울린_턴 and not 울린:
+                울린.append(turn)
+                return True
+            return False
+
+        return horn
+
+    있음 = _run(_config(lineup=("thoma", "aude", "martin")), horn=once())  # 오드가 전령관
+    없음 = _run(_config(lineup=("thoma", "gilles", "martin")), horn=once())  # 전령관 없음
+
+    assert _horn_turns(있음)[0] == 울린_턴, "전령관이 있는데 신호가 늦었다"
+    assert _horn_turns(없음)[0] == 울린_턴 + 1, "전령관이 없는데 신호가 제때 닿았다"
+
+
+def test_지연된_신호도_한_번만_터진다():
+    """묵혀 둔 신호가 매 턴 다시 울리면 뿔피리가 무한이 된다.
+
+    그리고 `horn` 이벤트는 **닿은 턴에 하나뿐**이어야 한다 — 지연을 따로
+    이벤트로 내면 리플레이가 그 턴에도 뿔피리를 분다(J1 회귀).
+    """
+    울린 = []
+
+    def once(turn):
+        if turn == 2 and not 울린:
+            울린.append(turn)
+            return True
+        return False
+
+    rec = _run(_config(lineup=("thoma", "gilles", "martin")), horn=once)
+    turns = _horn_turns(rec)
+    assert turns == [3], f"신호가 한 번만, 늦게 닿아야 한다: {turns}"
+    e = next(x for x in rec.events if x.kind == "horn")
+    assert e.payload["delayed_from"] == 2
+
+
+def test_전령관이_쓰러지면_그_판은_지연을_받는다():
+    """부는 사람이 서 있어야 제때 분다 — 나팔은 쓰러진 사람이 불지 못한다."""
+    from apps.arena.app.use_cases.runner import herald_present, setup_battle
+    from content.missions import MISSION_JUVENILE_BOSS
+
+    members = build_party(_config(lineup=("thoma", "aude", "martin")))
+    b = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True)
+    assert herald_present(b)
+    b.units["aude"].alive = False
+    assert not herald_present(b)
+
+
+def test_카드는_출처_라운드를_들고_온다():
+    """QA 2026-09-09 V(J9) — 기획서 v3 §11 은 카드마다 **출처 라운드·인물·종**을
+    링크하라고 한다. 종과 인물은 있었지만 라운드가 없었다 — "몇 회차에 그것이
+    이걸 봤는가" 를 못 짚으면 판을 넘는 학습이 아니라 그냥 표시다.
+    """
+    rec = _card_run(seed=3, lineup=("thoma", "aude", "martin"))
+    cards = [e for e in rec.events if e.kind == "cards"][0].payload["cards"]
+    회차 = [e.payload["no"] for e in rec.events if e.kind == "mission_start"]
+    assert cards
+    for c in cards:
+        assert c["round"] in 회차, f"출처 라운드가 없거나 이 계약의 회차가 아니다: {c}"

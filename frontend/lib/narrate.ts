@@ -167,7 +167,10 @@ export function narrate(e: TraceEvent, names: Names): string {
       return `대원들은 그것을 「${p.after}」이라 부르기 시작했다.`;
     case "horn":
       // 기획서 v3 §8.2 — 유저의 유일한 전투 중 개입. 즉시 이탈, 보수 0.
-      return `후방에서 뿔피리가 울린다. 대열이 물러선다 — ${(p.withdrew as string[] ?? []).length}명 전원.`;
+      // 전령관이 없으면 신호가 한 턴 늦는다 — 그 한 턴이 사람을 잃는 자리다.
+      return p.delayed_from
+        ? `${p.delayed_from}턴에 부른 뿔피리가 이제야 닿는다 — 전령관이 없다. 대열이 물러선다: ${(p.withdrew as string[] ?? []).length}명.`
+        : `후방에서 뿔피리가 울린다. 대열이 물러선다 — ${(p.withdrew as string[] ?? []).length}명 전원.`;
     case "casualty": {
       // 기획서 v3 §6.0 — HP 0 은 사망이 아니다. 전투가 끝난 뒤에 갈린다.
       const verdict = String(p.verdict);

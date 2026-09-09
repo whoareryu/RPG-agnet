@@ -337,7 +337,8 @@ def build_app(
         """뿔피리 — 즉시 이탈(기획서 v3 §8.2). 계약 기간 3회.
 
         전멸은 피하지만 목표는 실패하고 보수는 없다. 부는 것은 전령관이다 —
-        편성에 없으면 신호가 늦는다(그 지연은 core 가 판단한다).
+        나팔을 든 사람이 서 있지 않으면 신호가 한 턴 늦는다.
+        지연은 러너가 판단한다(`runner.herald_present`).
         """
         session = sessions.get(run_id)
         if session is None:

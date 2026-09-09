@@ -98,6 +98,9 @@ class ActionRecord:
     target: str | None
     damage: int
     healed: int
+    # 몇 회차의 기록인가. 학습 카드가 "출처 라운드" 를 짚는 재료다
+    # (기획서 v3 §11, QA 2026-09-09 J9). 기록은 판을 넘어 쌓인다.
+    mission: int = 0
 
 
 @dataclass
@@ -116,6 +119,7 @@ class Battle:
     summoned: int = 0
     summon_every: int = 0
     retreat_ordered: bool = False
+    mission_no: int = 0  # 이 전투가 몇 회차인가 — history 에 찍혀 판을 넘어 남는다
     # 직전 작전 때의 승산. 감독이 추세를 본다 — 한 번 낮게 찍혔다고 판을 접지 않는다.
     last_plan_odds: float | None = None
     turn_limit: int = TURN_LIMIT

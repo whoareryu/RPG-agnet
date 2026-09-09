@@ -27,7 +27,7 @@ WEAPONS: dict[str, Equipment] = {
     "전투 도끼": Equipment("전투 도끼", 3, 0, 13, 14),
     "워해머": Equipment("워해머", 2, 0, 14, 16),
     # 음유시인 — 소리가 무기다. 피해는 곁다리고 역할은 지원이다
-    "나팔": Equipment("나팔", 1, 0, 3, 4, ranged=True),
+    "나팔": Equipment("나팔", 1, 0, 3, 4, ranged=True, is_horn=True),
     "단검과 붕대": Equipment("단검과 붕대", 1, 0, 3, 5),
     "장궁": Equipment("장궁", 2, 170, 9, 11, is_long=True, ranged=True),
     "단궁": Equipment("단궁", 1, 0, 6, 8, ranged=True),

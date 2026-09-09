@@ -34,10 +34,18 @@ def pattern_metrics(history: list[ActionRecord], ranged_ids: set[str]) -> dict[s
     total = sum(dealt.values())
     # 동률이면 먼저 친 쪽 — set 순회는 프로세스마다 순서가 달라 판이 갈린다.
     top = max(dealt, key=lambda a: (dealt[a], -list(dealt).index(a)), default=None)
+    # 관측이 나온 회차 — 기록은 판을 넘어 쌓이므로 "언제 봤는가" 를 짚을 수 있다
+    # (기획서 v3 §11, QA 2026-09-09 J9). 그 사람이 가장 많이 때린 판이다.
+    by_round: Counter[int] = Counter()
+    for h in history:
+        if h.faction == "party" and h.actor == top and h.damage > 0:
+            by_round[h.mission] += h.damage
     return {
         "top_contributor": top,
         "top_ratio": round(dealt[top] / total, 2) if top and total else 0.0,
+        "top_round": by_round.most_common(1)[0][0] if by_round else 0,
         "ranged_count": len(ranged_ids),
+        "last_round": history[-1].mission if history else 0,
         "dealt": dict(dealt),
     }
 
@@ -45,7 +53,7 @@ def pattern_metrics(history: list[ActionRecord], ranged_ids: set[str]) -> dict[s
 def choose_cards(
     history: list[ActionRecord],
     ranged_ids: set[str],
-    forsaken: tuple[tuple[str, str], ...],
+    forsaken: tuple[tuple[str, str, int], ...],
     slots: int,
     pool: tuple[CardDef, ...] = (),
 ) -> list[Chosen]:
@@ -62,8 +70,18 @@ def choose_cards(
         card = by_key["devoured"]
         # 병과를 함께 싣는다 — 두고 온 사람은 이 판에 없으므로, 그것이 배운 것을
         # 지금 그 자리에 선 사람에게 건다(QA 2026-09-09 J5).
-        member, char_class = forsaken[0]
-        out.append((card, {"member": member, "char_class": char_class, "source": card.source}))
+        member, char_class, 회차 = forsaken[0]
+        out.append(
+            (
+                card,
+                {
+                    "member": member,
+                    "char_class": char_class,
+                    "source": card.source,
+                    "round": 회차,
+                },
+            )
+        )
 
     if m["top_contributor"] and "pillar" in by_key:
         card = by_key["pillar"]
@@ -74,12 +92,15 @@ def choose_cards(
                     "member": m["top_contributor"],
                     "ratio": int(m["top_ratio"] * 100),
                     "source": card.source,
+                    "round": m["top_round"],
                 },
             )
         )
 
     if m["ranged_count"] and "range" in by_key:
         card = by_key["range"]
-        out.append((card, {"count": m["ranged_count"], "source": card.source}))
+        out.append(
+            (card, {"count": m["ranged_count"], "source": card.source, "round": m["last_round"]})
+        )
 
     return out[:slots]

@@ -40,7 +40,7 @@ def test_굴에_두고_온_사람이_있으면_섭식_카드가_먼저_온다():
     """미회수의 대가가 카드가 되어 눈앞에 있다(기획서 v3 §8.4)."""
     h = _hist([("thoma", 40), ("martin", 10)])
     cards = choose_cards(
-        h, ranged_ids={"thoma"}, forsaken=(("martin", "warrior"),), slots=3, pool=CARDS
+        h, ranged_ids={"thoma"}, forsaken=(("martin", "warrior", 7),), slots=3, pool=CARDS
     )
     assert cards[0][0].key == "devoured"
     assert cards[0][1]["member"] == "martin" and cards[0][1]["char_class"] == "warrior"
@@ -51,7 +51,7 @@ def test_슬롯을_넘지_않는다():
     assert (
         len(
             choose_cards(
-                h, ranged_ids={"thoma"}, forsaken=(("martin", "warrior"),), slots=1, pool=CARDS
+                h, ranged_ids={"thoma"}, forsaken=(("martin", "warrior", 7),), slots=1, pool=CARDS
             )
         )
         == 1

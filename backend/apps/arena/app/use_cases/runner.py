@@ -101,7 +101,9 @@ class RunRecord:
     boss_title: str | None = None
     # 회수하지 않아 굴에 남은 사람들 (id, 병과). 「섭식」 학습 카드의 재료다(§8.4).
     # 병과를 들고 다니는 이유: 그것이 배운 것은 사람이 아니라 그 병과를 상대하는 법이다.
-    forsaken: tuple[tuple[str, str], ...] = ()
+    # 굴에 두고 온 사람 — (id, 병과, **몇 회차에**). 회차는 「섭식」 카드가
+    # 출처 라운드를 짚는 재료다(기획서 v3 §11).
+    forsaken: tuple[tuple[str, str, int], ...] = ()
 
 
 class _Collect:
@@ -154,6 +156,7 @@ def setup_battle(
         adaptation_on=adaptation_on and mission.adaptation_on,
         enemy_def=mission.enemy,
         summon_every=mission.enemy.summon_every,
+        mission_no=mission.no,
     )
 
 
@@ -235,6 +238,9 @@ def _apply_cards(battle: Battle, cards: list[tuple[Any, dict[str, Any]]], tracer
                 "key": card.key,
                 "name": card.name,
                 "source": card.source,
+                # 출처 라운드·인물·종 셋이 다 링크돼야 한다(기획서 v3 §11).
+                # 라운드가 없으면 "판을 넘는 학습" 이 아니라 그냥 표시다.
+                "round": why.get("round", 0),
                 "observation": card.observation.format(**why),
                 "evidence": why,
                 "applied": applied,
@@ -265,6 +271,16 @@ def _emit_resolution(tracer: Tracer, rec: Any, action: Action, actor: str) -> No
             {"roll": rec.flee_roll, "needed": rec.flee_needed, "success": rec.flee_success},
             actor=actor,
         )
+
+
+def herald_present(battle: Battle) -> bool:
+    """나팔을 든 사람이 아직 서 있는가(기획서 v3 §8.2).
+
+    어느 물건이 나팔인지는 콘텐츠가 안다 — 여기서는 `is_horn` 만 본다.
+    """
+    return any(
+        u.faction == battle.party and u.active and u.weapon.is_horn for u in battle.units.values()
+    )
 
 
 def play_mission(
@@ -341,6 +357,7 @@ def play_mission(
             abandoned = True
 
     result = None
+    늦은_신호: int | None = None  # 전령관이 없어 한 턴 묵혀 둔 신호(기획서 v3 §8.2)
     while result is None:
         battle.turn += 1
         tracer.turn = battle.turn
@@ -348,12 +365,34 @@ def play_mission(
 
         # 뿔피리가 울리면 그 자리에서 끝난다. 전멸은 피하지만 목표는 실패하고
         # 보수는 없다(기획서 v3 §8.2). 소환도 행동도 이번 턴에는 없다.
-        if horn is not None and horn(battle.turn):
+        #
+        # **부는 것은 전령관이다.** 나팔을 든 사람이 서 있지 않으면 신호가 한 턴
+        # 늦는다 — 그 한 턴에 누가 쓰러질 수 있다. 이것이 병과의 값이다.
+        # (전에는 주석만 "core 가 판단한다" 였고 코드가 없었다 — QA J8·T.)
+        # `horn` 이벤트는 **실제로 신호가 닿은 턴에 한 번만** 나간다. 지연을
+        # 따로 이벤트로 내보내면 리플레이가 그 턴에도 뿔피리를 분다(J1 회귀).
+        # 늦었다는 사실은 payload 의 `delayed_from` 이 말한다.
+        울렸나 = horn(battle.turn) if horn is not None else False
+        if 울렸나 and not herald_present(battle):
+            늦은_신호 = battle.turn
+            울렸나 = False
+        elif 늦은_신호:
+            울렸나 = True
+        if 울렸나:
             나온_사람 = [u for u in battle.units.values() if u.faction == battle.party and u.active]
             battle.retreat_ordered = True
             for u in 나온_사람:
                 u.fled = True
-            tracer.emit("horn", {"turn": battle.turn, "withdrew": [u.id for u in 나온_사람]})
+            tracer.emit(
+                "horn",
+                {
+                    "turn": battle.turn,
+                    "withdrew": [u.id for u in 나온_사람],
+                    # 전령관이 없어 늦었으면 원래 울린 턴을 남긴다 — 그 한 턴에
+                    # 무슨 일이 있었는지 인스펙터가 짚을 수 있어야 한다.
+                    "delayed_from": 늦은_신호,
+                },
+            )
             result = outcome(battle)
             break
 
@@ -538,7 +577,7 @@ def run(
             record.results[-1] = res
             남은_사람 = {c.id: c for c, _, _ in members}
             record.forsaken = record.forsaken + tuple(
-                (cid, 남은_사람[cid].char_class) for cid in unpaid if cid in 남은_사람
+                (cid, 남은_사람[cid].char_class, mission.no) for cid in unpaid if cid in 남은_사람
             )
             for cid in res.taken:
                 tracer.emit(

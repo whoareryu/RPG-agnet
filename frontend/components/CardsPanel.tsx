@@ -13,6 +13,8 @@ type Card = {
   key: string;
   name: string;
   source: string;
+  // 기획서 v3 §11 — 카드마다 출처 라운드·인물·종이 링크된다.
+  round?: number;
   observation: string;
   evidence: Record<string, unknown>;
   applied: Record<string, unknown>;
@@ -44,14 +46,17 @@ export default function CardsPanel({
             <li key={c.key} className="stack" style={{ gap: 3 }}>
               <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
                 <strong>「{c.name}」</strong>
-                <span className="faint small">출처: {SOURCE_KO[c.source] ?? c.source}</span>
+                <span className="faint small">
+                  출처: {SOURCE_KO[c.source] ?? c.source}
+                  {c.round ? ` · ${c.round}회차` : ""}
+                </span>
               </div>
               <p className="small" style={{ margin: 0 }}>
                 관측: {c.observation}
               </p>
               {c.source === "feeding" && who && (
                 <p className="small" style={{ margin: 0, color: "var(--color-accent)" }}>
-                  이 보스는 당신이 굴에 두고 온 {names[who] ?? who}에게서 이걸 배웠습니다.
+                  이 보스는 {c.round ? `${c.round}회차에 ` : ""}당신이 굴에 두고 온 {names[who] ?? who}에게서 이걸 배웠습니다.
                 </p>
               )}
             </li>

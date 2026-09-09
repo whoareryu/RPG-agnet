@@ -13,7 +13,7 @@ from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
 @pytest.fixture
 def client(tmp_path):
     app = build_app(
-        store=JsonlRunStore(tmp_path), model_factory=lambda: Harness(FakeModel(), FakeModel())
+        store=JsonlRunStore(tmp_path), model_factory=lambda _n: Harness(FakeModel(), FakeModel())
     )
     return TestClient(app)
 
@@ -126,7 +126,7 @@ def test_없는_런은_404(client):
 def test_시크릿이_설정되면_헤더_없이는_401(tmp_path, monkeypatch):
     monkeypatch.setenv("BACKEND_SHARED_SECRET", "s3cret")
     app = build_app(
-        store=JsonlRunStore(tmp_path), model_factory=lambda: Harness(FakeModel(), FakeModel())
+        store=JsonlRunStore(tmp_path), model_factory=lambda _n: Harness(FakeModel(), FakeModel())
     )
     c = TestClient(app)
     assert c.get("/roster/preset").status_code == 401
@@ -148,7 +148,7 @@ def test_실험_결과가_있으면_그대로_내려준다(tmp_path):
     (out / "e1.json").write_text(_json.dumps({"experiment": "e1", "compositions": []}), "utf-8")
     app = build_app(
         store=JsonlRunStore(tmp_path),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         experiments_dir=out,
     )
     c = TestClient(app)
@@ -162,7 +162,7 @@ def test_실험_결과가_있으면_그대로_내려준다(tmp_path):
 def _two_mission_client(tmp_path, timeout=5.0):
     app = build_app(
         store=JsonlRunStore(tmp_path),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         directive_timeout=timeout,
     )
     return TestClient(app)
@@ -245,7 +245,7 @@ def test_동시_런_상한을_넘으면_429(tmp_path):
     """배포하면 누구나 POST /runs 를 반복할 수 있다 — 런마다 스레드가 생긴다."""
     app = build_app(
         store=JsonlRunStore(tmp_path),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         max_active_runs=1,
         directive_timeout=30,
     )
@@ -264,7 +264,7 @@ def test_동시_런_상한을_넘으면_429(tmp_path):
 def test_완료된_런은_상한을_먹지_않는다(tmp_path):
     app = build_app(
         store=JsonlRunStore(tmp_path),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         max_active_runs=1,
     )
     c = TestClient(app)

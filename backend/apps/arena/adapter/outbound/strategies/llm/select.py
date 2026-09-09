@@ -45,9 +45,17 @@ def pace_seconds() -> float:
         return 0.0
 
 
-def build_harness(name: str | None = None, max_calls: int | None = None) -> Harness:
-    """모든 경로가 하네스를 거친다 — 스키마 검증·재시도·폴백·호출 계수."""
-    limit = max_calls or int(os.environ.get("RPG_MAX_CALLS", MAX_CALLS))
+def build_harness(
+    missions: int = 1, name: str | None = None, max_calls: int | None = None
+) -> Harness:
+    """모든 경로가 하네스를 거친다 — 스키마 검증·재시도·폴백·호출 계수.
+
+    `MAX_CALLS` 는 **전투 한 판**의 상한이다(기획서 §7.1). 하네스는 런 하나를
+    끝까지 함께 가므로 예산도 계약 길이만큼 잡는다 — 그러지 않으면 18출동에서
+    8회차부터 모든 판단이 조용히 Fake 로 떨어진다(QA 2026-09-09 V2).
+    """
+    per_mission = max_calls or int(os.environ.get("RPG_MAX_CALLS", MAX_CALLS))
+    limit = per_mission * max(1, missions)
     model = build_model(name)
     pace = pace_seconds()
     if pace:

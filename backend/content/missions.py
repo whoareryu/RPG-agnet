@@ -41,7 +41,13 @@ MISSION_JUVENILE_BOSS = MissionSpec(
     casualty_tier="boss_juvenile",
 )
 
-# A단계 제출본: 야습 → 보스전 두 판.
+# A단계 제출본: 야습 → 보스전 두 판. **18출동 중 두 판을 잘라 낸 것**이다.
+#
+# 나머지 16판을 지금 채우지 않는 이유(QA 2026-09-09 V2 처리): 적 편성이 둘뿐이라
+# 16판이 거의 같은 판이 된다 — 숫자만 참이고 판은 거짓이 된다. 계약 길이는
+# 리스트 길이라 콘텐츠가 늘면 코드를 안 고치고 늘어난다. 호출 예산은 이미
+# 계약 길이만큼 잡으므로(`select.build_harness(missions=…)`) 18판도 지금 돈다 —
+# `test_긴_계약도_판마다_예산을_받는다` 가 실제로 18판을 돌려 확인한다.
 MISSIONS_A: tuple[MissionSpec, ...] = (MISSION_NIGHT_RAID, MISSION_JUVENILE_BOSS)
 
 # B단계: 같은 두 판 사이에 인터미션이 들어간다(러너가 intermission 플래그로 켠다).

@@ -82,6 +82,9 @@ class MissionResult:
     grade: str = "failure"
     recovery_paid: tuple[str, ...] = ()
     recovery_unpaid: tuple[str, ...] = ()
+    # 폴백 횟수. `calls_used` 만 보면 예산이 바닥나 모델을 안 쓴 판이
+    # "싸게 돌았다" 로 보인다(QA 2026-09-09 V2).
+    fallbacks: int = 0
 
 
 @dataclass
@@ -279,6 +282,7 @@ def play_mission(
     tracer.mission = mission.no
     tracer.turn = 0
     calls_before = getattr(model, "calls_used", 0)
+    fallbacks_before = getattr(model, "fallbacks", 0)
     tracer.emit(
         "mission_start",
         {
@@ -439,6 +443,7 @@ def play_mission(
         taken=tuple(taken),
         grade=grade_of(result, tuple(dead), tuple(taken), tuple(injured)),
         calls_used=getattr(model, "calls_used", 0) - calls_before,
+        fallbacks=getattr(model, "fallbacks", 0) - fallbacks_before,
         plans=plans,
         abandoned=abandoned,
     )
@@ -451,7 +456,10 @@ def play_mission(
     return res
 
 
-ModelFactory = Callable[[], DecisionModel]
+# 인자는 **계약 길이**(판 수)다. 호출 예산은 전투 한 판 기준이라(기획서 §7.1)
+# 계약이 길어지면 같이 늘어나야 한다 — 그러지 않으면 18출동에서 8회차부터
+# 모든 판단이 조용히 폴백한다(QA 2026-09-09 V2).
+ModelFactory = Callable[[int], DecisionModel]
 DiceFactory = Callable[[int], Dice]
 # (멤버, 직전 결과, 모델, 주사위, tracer) → 다음 판에 나갈 멤버.
 # core 는 인터미션의 내용을 모른다 — 호출자가 content 와 유저 입력을 묶어 준다.
@@ -476,7 +484,7 @@ def run(
 ) -> RunRecord:
     collect = _Collect(sink)
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
-    model = model_factory()
+    model = model_factory(len(config.missions))
     dice = dice_factory(config.seed)
     record = RunRecord(run_id=run_id, config=_config_payload(config, members))
 

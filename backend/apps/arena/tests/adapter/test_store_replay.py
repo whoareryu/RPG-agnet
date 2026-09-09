@@ -30,7 +30,7 @@ def _cfg(seed=3):
     )
 
 
-def _run(cfg, model_factory=lambda: Harness(FakeModel(), FakeModel())):
+def _run(cfg, model_factory=lambda _n: Harness(FakeModel(), FakeModel())):
     return run("r1", cfg, build_party(cfg), model_factory, SeededDice, clock=lambda: "T")
 
 
@@ -88,7 +88,7 @@ def test_리플레이는_모델_호출_없이_같은_판을_재생한다():
             raise AssertionError("리플레이 중에 모델을 불렀다")
 
     replay = ReplayModel(original.events, fallback=부르면안됨())
-    again = _run(_cfg(), model_factory=lambda: Harness(replay, 부르면안됨()))
+    again = _run(_cfg(), model_factory=lambda _n: Harness(replay, 부르면안됨()))
     assert _strip_model(again.events) == _strip_model(original.events)
     assert replay.exhausted == 0
 
@@ -96,7 +96,7 @@ def test_리플레이는_모델_호출_없이_같은_판을_재생한다():
 def test_녹화가_바닥나면_폴백으로_간다():
     original = _run(_cfg())
     replay = ReplayModel(original.events, fallback=FakeModel())
-    other = _run(_cfg(seed=9), model_factory=lambda: Harness(replay, FakeModel()))
+    other = _run(_cfg(seed=9), model_factory=lambda _n: Harness(replay, FakeModel()))
     assert other.results[0].outcome in ("win", "lose", "retreat", "draw")
 
 

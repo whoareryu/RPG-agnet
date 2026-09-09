@@ -296,7 +296,7 @@ def build_app(
         _start(
             session,
             members,
-            lambda: Harness(
+            lambda _n: Harness(
                 PacedModel(ReplayModel(events, FakeModel()), pace)
                 if pace
                 else ReplayModel(events, FakeModel()),

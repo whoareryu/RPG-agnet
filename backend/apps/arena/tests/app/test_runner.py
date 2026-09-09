@@ -31,7 +31,7 @@ def _run(config, run_id="r", horn=None, recovery=None):
         run_id,
         config,
         build_party(config),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         clock=lambda: "T",
         horn=horn,
@@ -381,7 +381,7 @@ def _card_run(seed=3, **over):
         "r",
         _config(seed=seed, **over),
         build_party(_config(seed=seed, **over)),
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         clock=lambda: "T",
         card_pool=CARDS,
@@ -472,3 +472,54 @@ def test_섭식_카드는_두고_온_사람의_병과를_지금_사람에게_건
     assert 섭식["applied"], "섭식이 여전히 무효다"
     assert 섭식["applied"]["after"] == "thoma"
     assert 섭식["applied"]["inherited_from"] == "someone"
+
+
+# ─── 계약 길이와 호출 예산 (QA 2026-09-09 V2) ───────────────────────────
+
+
+def test_긴_계약도_판마다_예산을_받는다():
+    """QA 2026-09-09 V2 — `MAX_CALLS` 가 **런당 하나**의 하네스에 걸려 있어,
+    18출동을 흉내 내면 8회차부터 모든 판단이 조용히 Fake 로 떨어졌다.
+    게다가 예산이 바닥나면 하네스가 호출을 세지 않아 `calls_used` 가 0 이 되고,
+    "호출 300 이하" 검사가 **모델을 아예 안 쓴 판에서 가장 예쁘게 통과**했다.
+
+    예산은 기획서 §7.1 대로 **전투 한 판당** 이다 — 계약이 길어지면 같이 늘어난다.
+    """
+    from apps.arena.adapter.outbound.strategies.llm.select import build_harness
+    from apps.arena.domain.constants.balance import MAX_CALLS
+    from content.missions import MISSION_JUVENILE_BOSS, MISSION_NIGHT_RAID
+
+    긴_계약 = (MISSION_NIGHT_RAID, MISSION_JUVENILE_BOSS) * 9  # 18출동
+    cfg = _config()
+    cfg = RunConfig(**{**cfg.__dict__, "missions": 긴_계약})
+    rec = run(
+        "long",
+        cfg,
+        build_party(cfg),
+        model_factory=build_harness,
+        dice_factory=SeededDice,
+        clock=lambda: "T",
+    )
+    끝 = [e for e in rec.events if e.kind == "mission_end"]
+    assert 끝, "18출동인데 한 판도 안 돌았다"
+    for e in 끝:
+        assert e.payload["fallbacks"] == 0, (
+            f"{e.payload['no']}회차에서 조용히 폴백했다: {e.payload['fallbacks']}회"
+        )
+        assert 0 < e.payload["calls_used"] <= MAX_CALLS, (
+            f"{e.payload['no']}회차의 호출 수가 이상하다: {e.payload['calls_used']}"
+        )
+
+
+def test_예산을_넘긴_폴백도_호출로_센다():
+    """예산이 바닥났다고 계수를 멈추면 `calls_used` 가 거짓말을 한다 —
+    "모델을 안 썼다" 가 "싸게 돌았다" 로 보인다.
+    """
+    from apps.arena.adapter.outbound.strategies.harness.harness import Harness as H
+    from apps.arena.app.use_cases.agents.schemas import CHARACTER_SCHEMA
+
+    h = H(FakeModel(), FakeModel(), max_calls=1)
+    for _ in range(3):
+        h.decide("character", "p", CHARACTER_SCHEMA)
+    assert h.calls_used == 3, "예산 밖 호출이 계수에서 빠졌다"
+    assert h.fallbacks == 2 and h.budget_skips == 2

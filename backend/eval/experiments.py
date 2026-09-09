@@ -95,7 +95,7 @@ def _run_once(
         f"eval-{seed}",
         cfg,
         members,
-        model_factory=lambda: Harness(FakeModel(), FakeModel()),
+        model_factory=lambda _n: Harness(FakeModel(), FakeModel()),
         dice_factory=SeededDice,
         sink=sink,
         clock=lambda: "T",

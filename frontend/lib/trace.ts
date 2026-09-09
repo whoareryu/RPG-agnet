@@ -103,6 +103,9 @@ export type MissionResult = {
   grade?: Grade;
   recovery_paid?: string[];
   recovery_unpaid?: string[];
+  // 폴백 횟수. calls_used 만 보면 예산이 바닥나 모델을 안 쓴 판이 "싸게
+  // 돌았다" 로 보인다(QA 2026-09-09 V2).
+  fallbacks?: number;
 };
 
 /** 결과 5등급 — 「철수」가 벌점이 아닌 것이 핵심이다(기획서 v3 §7.1b). */

@@ -3,7 +3,8 @@
 모델 포트를 감싼다. 검증에 실패하면 오류 문장을 프롬프트 끝에 붙여 다시 묻고,
 그래도 실패하면 폴백(Fake)으로 답하고 `_meta.fallback=true` 를 남긴다.
 호출 상한을 넘으면 모델을 부르지 않고 폴백으로 간다 — 전투 1판 = 100~300 호출
-(기획서 §7.1)의 비용 통제.
+(기획서 §7.1)의 비용 통제. **상한은 전투 한 판 기준**이라 계약이 길어지면 같이
+늘어난다(`select.build_harness(missions=…)`).
 """
 
 import time
@@ -28,6 +29,7 @@ class Harness:
         self._retries = retries
         self.calls_used = 0
         self.fallbacks = 0
+        self.budget_skips = 0
 
     @property
     def name(self) -> str:
@@ -38,6 +40,11 @@ class Harness:
         attempts = 0
         errors: list[str] = []
         if self.calls_used >= self._max_calls:
+            # 예산 밖 호출도 **센다.** 세지 않으면 `calls_used` 가 거짓말을 한다 —
+            # 모델을 아예 안 쓴 판이 "싸게 돌았다" 로 보이고, "호출 상한 이하"
+            # 검사가 거기서 가장 예쁘게 통과한다(QA 2026-09-09 V2).
+            self.calls_used += 1
+            self.budget_skips += 1
             return self._use_fallback(role, prompt, schema, attempts, "budget", t0)
 
         current = prompt

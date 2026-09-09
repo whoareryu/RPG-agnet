@@ -147,6 +147,11 @@ export function narrate(e: TraceEvent, names: Names): string {
       const v = Math.round(Number(p.odds) * 100);
       return `단장이 결정한다: "${p.rationale}" (승산 ${v}%). 전원 철수.`;
     }
+    case "recovery":
+      // 기획서 v3 §6.8 — 회수는 보장된 거래가 아니다. 미지불은 영구 상실이다.
+      return p.paid
+        ? `${withJosa(who, "를")} 되찾기로 한다. 은화 ${p.cost}.`
+        : `${withJosa(who, "를")} 굴에 둔다. 되찾는 값은 은화 ${p.cost}였다.`;
     case "boss_named":
       // 기획서 v3 §8.5 — 그것에게는 이름이 없다. 첫 끌려감이 붙인다.
       return `대원들은 그것을 「${p.after}」이라 부르기 시작했다.`;

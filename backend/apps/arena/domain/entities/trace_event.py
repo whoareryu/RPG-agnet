@@ -32,6 +32,7 @@ KINDS: frozenset[str] = frozenset(
         "horn",
         "casualty",
         "boss_named",
+        "recovery",
         "mission_end",
         "intermission_start",
         "directive",

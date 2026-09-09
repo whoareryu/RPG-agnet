@@ -19,6 +19,7 @@ export const KINDS = [
   "horn",
   "casualty",
   "boss_named",
+  "recovery",
   "mission_end",
   "intermission_start",
   "directive",

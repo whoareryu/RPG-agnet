@@ -26,7 +26,7 @@ def _config(
     )
 
 
-def _run(config, run_id="r", horn=None):
+def _run(config, run_id="r", horn=None, recovery=None):
     return run(
         run_id,
         config,
@@ -35,6 +35,7 @@ def _run(config, run_id="r", horn=None):
         dice_factory=SeededDice,
         clock=lambda: "T",
         horn=horn,
+        recovery=recovery,
     )
 
 
@@ -326,3 +327,45 @@ def test_호칭이_붙으면_보스가_그_이름으로_선다():
     # 호칭이 없으면 원래 이름 그대로다.
     b2 = setup_battle(MISSION_JUVENILE_BOSS, members, seed=1, adaptation_on=True)
     assert [u for u in b2.units.values() if u.is_boss][0].name == "굴의 그것"
+
+
+# ─── 회수 결정 (기획서 v3 §6.8) ─────────────────────────────────────────
+
+
+def _taken_run(decide=None, seeds=range(1, 80)):
+    """끌려감이 실제로 나오는 판 하나를 찾아 돌린다."""
+    from dataclasses import replace as _replace
+
+    from content.missions import MISSIONS_A
+
+    여름 = tuple(_replace(m, casualty_tier="summer") for m in MISSIONS_A)
+    for seed in seeds:
+        cfg = _replace(_config(seed=seed, lineup=("aude", "agnes")), missions=여름)
+        rec = _run(cfg, recovery=decide)
+        if any(r.taken for r in rec.results):
+            return rec
+    raise AssertionError("끌려감이 나오는 시드를 찾지 못했다 — 이 테스트가 아무것도 재지 않는다")
+
+
+def test_결정하지_않으면_미지불로_영구_상실이다():
+    """기한을 넘기면 자동 미지불이다(기획서 v3 §6.8)."""
+    rec = _taken_run()
+    res = next(r for r in rec.results if r.taken)
+    assert res.recovery_unpaid == res.taken and res.recovery_paid == ()
+    assert set(rec.forsaken) == set(res.taken), "미지불이 「섭식」 대상으로 남지 않았다"
+
+
+def test_지불하면_섭식_대상에서_빠진다():
+    """지불의 값이 여기서 생긴다 — 보스가 그 사람에게서 배우지 못한다(§8.4)."""
+    rec = _taken_run(decide=lambda ids, costs: set(ids))
+    res = next(r for r in rec.results if r.taken)
+    assert res.recovery_paid == res.taken and res.recovery_unpaid == ()
+    assert rec.forsaken == ()
+
+
+def test_회수_결정이_비용과_함께_트레이스에_남는다():
+    rec = _taken_run()
+    ev = [e for e in rec.events if e.kind == "recovery"]
+    assert ev, "회수 결정이 트레이스에 없다"
+    p = ev[0].payload
+    assert p["member"] and p["paid"] is False and isinstance(p["cost"], int)

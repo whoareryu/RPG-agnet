@@ -30,3 +30,9 @@ class DirectivesRequest(BaseModel):
         default_factory=dict
     )
     growth: dict[str, dict[str, int]] = Field(default_factory=dict)
+
+
+class RecoveryRequest(BaseModel):
+    """회수 결정 — 지불할 대원 id 목록(기획서 v3 §6.8). 비면 전원 미지불이다."""
+
+    pay: list[str] = []

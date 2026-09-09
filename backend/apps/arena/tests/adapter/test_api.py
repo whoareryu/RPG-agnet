@@ -296,3 +296,18 @@ def test_뿔피리는_세_번까지만_받는다(client):
 
 def test_없는_런에_뿔피리를_불면_404(client):
     assert client.post("/runs/nope/horn").status_code == 404
+
+
+# ─── 회수 결정 (기획서 v3 §6.8) ─────────────────────────────────────────
+
+
+def test_회수_결정을_안_받을_때_보내면_409(client):
+    run_id = client.post("/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 5}).json()[
+        "run_id"
+    ]
+    r = client.post(f"/runs/{run_id}/recovery", json={"pay": ["thoma"]})
+    assert r.status_code in (409, 404)
+
+
+def test_없는_런에_회수_결정을_보내면_404(client):
+    assert client.post("/runs/nope/recovery", json={"pay": []}).status_code == 404

@@ -23,6 +23,7 @@ from apps.arena.adapter.inbound.api.schemas.arena_schema import (
     CreateRunRequest,
     CreateRunResponse,
     DirectivesRequest,
+    RecoveryRequest,
 )
 from apps.arena.adapter.outbound.strategies.dice import SeededDice
 from apps.arena.adapter.outbound.strategies.harness.harness import Harness
@@ -69,6 +70,11 @@ class RunSession:
         # 잔여 횟수는 여기가 센다. core 는 "지금 울렸나" 만 답받는다.
         self.horn_left = HORN_CHARGES
         self.horn_pending = threading.Event()
+        # 회수 결정 — 끌려간 대원을 다시 데려올 것인가(기획서 v3 §6.8).
+        # 화면이 답하지 않으면 미지불이다. 기한을 넘기면 자동 미지불이라는
+        # 규칙이 그대로 기본값이 된다.
+        self.recovery: queue.Queue[set[str]] = queue.Queue()
+        self.awaiting_recovery = threading.Event()
         self.finished_at: float | None = None
 
     def blow_horn(self) -> None:
@@ -254,6 +260,20 @@ def build_app(
         session.directives.put(req)
         return {"status": "accepted"}
 
+    @app.post("/runs/{run_id}/recovery", dependencies=guard)
+    def recovery(run_id: str, req: RecoveryRequest) -> dict[str, Any]:
+        """회수 결정 — 지불할 대원 목록(기획서 v3 §6.8).
+
+        A단계는 결정을 기록하는 데까지다. 회수 미션 개방은 B단계다.
+        """
+        session = sessions.get(run_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="진행 중인 런이 아니다")
+        if not session.awaiting_recovery.is_set():
+            raise HTTPException(status_code=409, detail="지금은 회수 결정을 받지 않는다")
+        session.recovery.put(set(req.pay))
+        return {"status": "accepted"}
+
     @app.post("/runs/{run_id}/horn", dependencies=guard)
     def horn(run_id: str) -> dict[str, Any]:
         """뿔피리 — 즉시 이탈(기획서 v3 §8.2). 계약 기간 3회.
@@ -332,6 +352,7 @@ def build_app(
                     sink=session,
                     intermission=intermission,
                     horn=session.horn_signal,
+                    recovery=_recovery_for(session),
                 )
                 try:
                     store.save(record)
@@ -349,6 +370,22 @@ def build_app(
                 session.queue.put(_DONE)
 
         threading.Thread(target=work, name=f"run-{session.run_id}", daemon=True).start()
+
+    def _recovery_for(session: RunSession) -> Any:
+        """회수 결정 훅. 화면의 답을 기다렸다가 지불 목록을 돌려준다."""
+
+        def hook(ids: list[str], costs: dict[str, int]) -> set[str]:
+            # 화면은 trace 의 recovery 이벤트와 이 플래그로 "지금 묻는다" 를 안다.
+            _ = costs
+            session.awaiting_recovery.set()
+            try:
+                return session.recovery.get(timeout=directive_timeout)
+            except queue.Empty:
+                return set()  # 기한을 넘기면 자동 미지불(기획서 v3 §6.8)
+            finally:
+                session.awaiting_recovery.clear()
+
+        return hook
 
     def _intermission_for(session: RunSession) -> Any:
         """인터미션 훅. 유저 입력을 기다렸다가 core 의 인터미션을 돌린다."""

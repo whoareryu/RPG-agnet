@@ -8,7 +8,7 @@
 """
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from apps.arena.app.use_cases.agents.boss import boss_act, minion_act
@@ -44,12 +44,17 @@ from apps.arena.domain.services.judgment.replan import (
 from apps.arena.domain.services.naming import boss_title as _boss_title
 from apps.arena.domain.services.rules.casualty import resolve_casualty
 from apps.arena.domain.services.rules.grade import grade_of
+from apps.arena.domain.services.rules.recovery import invested_of, recovery_cost
 
 PartyMember = tuple[Character, BuildChoice, str]  # (캐릭터, 빌드, 말투)
 
 # 뿔피리 — 유저의 유일한 전투 중 개입(기획서 v3 §8.2). 턴을 받아 "지금 울렸나"를
 # 답한다. core 는 잔여 횟수도 누가 부는지도 모른다 — 그건 호출자의 장부다.
 HornFn = Callable[[int], bool]
+
+# 회수 결정 — 끌려간 대원 id 목록과 각자의 비용을 받고, **지불할 사람**을 돌려준다.
+# 결정하지 않으면(None) 전원 미지불이다 — 기한을 넘기면 자동 미지불(기획서 v3 §6.8).
+RecoveryFn = Callable[[list[str], dict[str, int]], set[str]]
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,8 @@ class MissionResult:
     injured: tuple[str, ...] = ()
     taken: tuple[str, ...] = ()
     grade: str = "failure"
+    recovery_paid: tuple[str, ...] = ()
+    recovery_unpaid: tuple[str, ...] = ()
 
 
 @dataclass
@@ -77,6 +84,8 @@ class RunRecord:
     results: list[MissionResult] = field(default_factory=list)
     # 그것에게는 이름이 없다. 첫 끌려감이 붙인다(기획서 v3 §8.5).
     boss_title: str | None = None
+    # 회수하지 않아 굴에 남은 사람들. 「섭식」 학습 카드의 재료다(기획서 v3 §8.4).
+    forsaken: tuple[str, ...] = ()
 
 
 class _Collect:
@@ -367,6 +376,7 @@ def run(
     intermission: IntermissionFn | None = None,
     clock: Callable[[], str] | None = None,
     horn: HornFn | None = None,
+    recovery: RecoveryFn | None = None,
 ) -> RunRecord:
     collect = _Collect(sink)
     tracer = Tracer(run_id, collect, **({"clock": clock} if clock else {}))
@@ -389,6 +399,27 @@ def run(
             boss_title=record.boss_title,
         )
         record.results.append(res)
+
+        # 회수 결정. A단계는 여기까지다 — 회수 미션 개방은 B단계(기획서 v3 §12).
+        if res.taken:
+            남은_사람 = {c.id: c for c, _, _ in members}
+            비용 = {
+                cid: recovery_cost(invested_of(남은_사람[cid].stats))
+                for cid in res.taken
+                if cid in 남은_사람
+            }
+            지불 = recovery(list(res.taken), 비용) if recovery is not None else set()
+            paid = tuple(cid for cid in res.taken if cid in 지불)
+            unpaid = tuple(cid for cid in res.taken if cid not in 지불)
+            res = replace(res, recovery_paid=paid, recovery_unpaid=unpaid)
+            record.results[-1] = res
+            record.forsaken = record.forsaken + unpaid
+            for cid in res.taken:
+                tracer.emit(
+                    "recovery",
+                    {"member": cid, "cost": 비용.get(cid, 0), "paid": cid in 지불},
+                    actor=cid,
+                )
 
         # 첫 끌려감이 그것의 이름을 만든다(기획서 v3 §8.5). 한 번만이다 —
         # 회수에 성공해도 호칭은 남는다(2026-09-08 팀 결정 ③).

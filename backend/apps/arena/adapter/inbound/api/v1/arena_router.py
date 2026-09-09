@@ -28,7 +28,9 @@ from apps.arena.adapter.inbound.api.schemas.arena_schema import (
 from apps.arena.adapter.outbound.strategies.dice import SeededDice
 from apps.arena.adapter.outbound.strategies.harness.harness import Harness
 from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
+from apps.arena.adapter.outbound.strategies.llm.paced import PacedModel
 from apps.arena.adapter.outbound.strategies.llm.replay import ReplayModel
+from apps.arena.adapter.outbound.strategies.llm.select import pace_seconds
 from apps.arena.app.use_cases.intermission import (
     IntermissionInput,
     IntermissionState,
@@ -246,7 +248,18 @@ def build_app(
         session = RunSession(new_id, cfg)
         sessions[new_id] = session
         events = list(record.events)
-        _start(session, members, lambda: Harness(ReplayModel(events, FakeModel()), FakeModel()))
+        # 리플레이도 같은 속도로 흐른다 — 데모에서 뿔피리를 누를 수 있어야 한다.
+        pace = pace_seconds()
+        _start(
+            session,
+            members,
+            lambda: Harness(
+                PacedModel(ReplayModel(events, FakeModel()), pace)
+                if pace
+                else ReplayModel(events, FakeModel()),
+                FakeModel(),
+            ),
+        )
         return CreateRunResponse(run_id=new_id, seed=cfg.seed, model="replay")
 
     @app.post("/runs/{run_id}/directives", dependencies=guard)
@@ -288,6 +301,13 @@ def build_app(
             raise HTTPException(status_code=409, detail="이미 끝난 판이다")
         if session.horn_left <= 0:
             raise HTTPException(status_code=409, detail="뿔피리를 다 썼다")
+        # 이미 울린 신호가 아직 안 닿았다. 또 받으면 횟수만 닳고 효과는 하나다.
+        if session.horn_pending.is_set():
+            raise HTTPException(status_code=409, detail="이미 뿔피리가 울렸다")
+        # 전투 중 개입이다(기획서 v3 §8.2). 인터미션이나 회수 결정 중에 받으면
+        # 신호가 다음 판 첫 턴까지 묵혀 있다가 엉뚱한 자리에서 터진다.
+        if session.awaiting_input.is_set() or session.awaiting_recovery.is_set():
+            raise HTTPException(status_code=409, detail="지금은 전투 중이 아니다")
         session.blow_horn()
         return {"status": "accepted", "horn_left": session.horn_left}
 

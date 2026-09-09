@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Dashboard from "@/components/Dashboard";
+import HornButton from "@/components/HornButton";
+import RecoveryPanel from "@/components/RecoveryPanel";
 import Inspector from "@/components/Inspector";
 import IntermissionPanel from "@/components/IntermissionPanel";
 import NarrativeStream from "@/components/NarrativeStream";
@@ -20,6 +22,7 @@ export default function BattleClient({ runId }: { runId: string }) {
   const [follow, setFollow] = useState(true);
   const [showQuiet, setShowQuiet] = useState(false);
   const [sentFor, setSentFor] = useState<number[]>([]);
+  const [recoverySent, setRecoverySent] = useState(false);
   const seen = useRef(new Set<number>());
 
   useEffect(() => {
@@ -73,6 +76,20 @@ export default function BattleClient({ runId }: { runId: string }) {
   const missionStart = events.find((e) => e.kind === "mission_start");
   const title = missionStart ? String((missionStart.payload.name as string) ?? "") : "";
 
+  // 그것에게 이름이 붙었나(기획서 v3 §8.5). 붙으면 15회차까지 남는다.
+  const bossName = useMemo(() => {
+    const named = events.findLast((e) => e.kind === "boss_named");
+    return named ? String(named.payload.after ?? "") : null;
+  }, [events]);
+
+  // 굴로 끌려간 사람들 — 회수 결정을 받아야 한다(기획서 v3 §6.8).
+  // 이미 결정을 보냈거나 판이 끝났으면 묻지 않는다.
+  const taken = useMemo(
+    () => events.filter((e) => e.kind === "casualty" && e.payload.verdict === "taken"),
+    [events],
+  );
+  const askRecovery = taken.length > 0 && !recoverySent && status !== "error";
+
   return (
     <main className="page stack" style={{ gap: 14 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -97,6 +114,7 @@ export default function BattleClient({ runId }: { runId: string }) {
             <input type="checkbox" checked={showQuiet} onChange={(e) => setShowQuiet(e.target.checked)} />
             전부 보기
           </label>
+          <HornButton runId={runId} live={status === "live"} />
           {runEnd && (
             <Link className="btn btn-sm btn-primary" href={`/result/${runId}`}>
               결과 보기 →
@@ -114,6 +132,21 @@ export default function BattleClient({ runId }: { runId: string }) {
             런이 실패했다: {error}
           </p>
         </div>
+      )}
+
+      {bossName && (
+        <p className="small" style={{ margin: 0 }}>
+          대원들은 그것을 <strong>「{bossName}」</strong>이라 부른다.
+        </p>
+      )}
+
+      {askRecovery && (
+        <RecoveryPanel
+          runId={runId}
+          taken={taken}
+          names={names}
+          onSent={() => setRecoverySent(true)}
+        />
       )}
 
       {awaiting && (

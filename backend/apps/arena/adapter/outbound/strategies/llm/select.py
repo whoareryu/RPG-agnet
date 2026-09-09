@@ -8,6 +8,7 @@ import os
 
 from apps.arena.adapter.outbound.strategies.harness.harness import Harness
 from apps.arena.adapter.outbound.strategies.llm.fake import FakeModel
+from apps.arena.adapter.outbound.strategies.llm.paced import PacedModel
 from apps.arena.domain.constants.balance import MAX_CALLS
 from apps.arena.domain.ports.ports import DecisionModel
 
@@ -31,7 +32,24 @@ def build_model(name: str | None = None) -> DecisionModel:
     raise ValueError(f"모르는 모델: {name} (fake|gemini|anthropic)")
 
 
+def pace_seconds() -> float:
+    """RPG_PACE_S — decide() 한 번마다 쉬는 시간(초). 기본 0.
+
+    Fake 는 한 판을 수백 ms 에 끝낸다. 그러면 뿔피리를 누를 시간이 없다
+    (기획서 v3 §8.2). 배포 데모에서는 0.2~0.3 을 준다. 실모델은 이미
+    느리므로 0 이다.
+    """
+    try:
+        return float(os.environ.get("RPG_PACE_S", "0"))
+    except ValueError:
+        return 0.0
+
+
 def build_harness(name: str | None = None, max_calls: int | None = None) -> Harness:
     """모든 경로가 하네스를 거친다 — 스키마 검증·재시도·폴백·호출 계수."""
     limit = max_calls or int(os.environ.get("RPG_MAX_CALLS", MAX_CALLS))
-    return Harness(build_model(name), FakeModel(), max_calls=limit)
+    model = build_model(name)
+    pace = pace_seconds()
+    if pace:
+        model = PacedModel(model, pace)
+    return Harness(model, FakeModel(), max_calls=limit)

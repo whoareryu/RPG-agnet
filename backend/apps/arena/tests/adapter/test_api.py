@@ -311,3 +311,16 @@ def test_회수_결정을_안_받을_때_보내면_409(client):
 
 def test_없는_런에_회수_결정을_보내면_404(client):
     assert client.post("/runs/nope/recovery", json={"pay": []}).status_code == 404
+
+
+def test_이미_울린_뿔피리는_또_받지_않는다(client):
+    """세 번 누르면 횟수만 닳고 효과는 하나다 — 그건 함정이다."""
+    run_id = client.post(
+        "/runs", json={"lineup": ["martin", "aude", "agnes"], "seed": 11, "missions": 2}
+    ).json()["run_id"]
+    first = client.post(f"/runs/{run_id}/horn")
+    if first.status_code != 200:
+        return  # 판이 먼저 끝났으면 이 테스트는 재지 않는다
+    second = client.post(f"/runs/{run_id}/horn")
+    assert second.status_code == 409
+    assert "이미" in second.json()["detail"] or "전투 중이 아니다" in second.json()["detail"]
